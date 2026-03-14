@@ -3,7 +3,6 @@ import type { ActionManager } from "../../actions/manager";
 import {
   ExitZenModeAction,
   FinalizeAction,
-  UndoRedoActions,
   ZoomActions,
 } from "../Actions";
 import { useDevice } from "../App";
@@ -47,15 +46,6 @@ const Footer = ({
               zoom={appState.zoom}
             />
 
-            {!appState.viewModeEnabled && (
-              <UndoRedoActions
-                renderAction={actionManager.renderAction}
-                className={clsx("zen-mode-transition", {
-                  "layer-ui__wrapper__footer-left--transition-bottom":
-                    appState.zenModeEnabled,
-                })}
-              />
-            )}
             {showFinalize && (
               <FinalizeAction
                 renderAction={actionManager.renderAction}

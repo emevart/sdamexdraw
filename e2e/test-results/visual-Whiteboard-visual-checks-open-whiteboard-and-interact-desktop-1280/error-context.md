@@ -1,0 +1,1260 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - link "Перейти к основному содержимому" [ref=e13] [cursor=pointer]:
+      - /url: "#main-content"
+    - generic [ref=e14]:
+      - navigation "Primary navigation" [ref=e16]:
+        - generic [ref=e17]:
+          - link "SdamEx - Главная страница" [ref=e18] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e19]:
+              - img [ref=e21]
+              - generic [ref=e31]: SdamEx
+          - button "Свернуть навигацию" [ref=e32] [cursor=pointer]:
+            - img
+        - list [ref=e34]:
+          - listitem [ref=e35]:
+            - link "Панель управления" [ref=e36] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e37]
+              - generic [ref=e40]: Панель управления
+          - listitem [ref=e41]:
+            - link "Задачи" [ref=e42] [cursor=pointer]:
+              - /url: /math
+              - img [ref=e43]
+              - generic [ref=e45]: Задачи
+          - listitem [ref=e46]:
+            - link "Инструменты" [ref=e47] [cursor=pointer]:
+              - /url: /tools
+              - img [ref=e48]
+              - generic [ref=e50]: Инструменты
+          - listitem [ref=e51]:
+            - link "Профиль" [ref=e52] [cursor=pointer]:
+              - /url: /profile
+              - img [ref=e53]
+              - generic [ref=e56]: Профиль
+        - generic [ref=e57]:
+          - button "Написать нам" [ref=e58] [cursor=pointer]:
+            - img [ref=e59]
+            - generic [ref=e61]: Написать нам
+          - button "Контакты" [ref=e63] [cursor=pointer]:
+            - img [ref=e64]
+            - generic [ref=e67]: Контакты
+            - img [ref=e68]
+          - button "Тема" [ref=e71] [cursor=pointer]:
+            - img [ref=e72]
+            - generic [ref=e78]: Как в системе
+            - img [ref=e79]
+      - generic [ref=e81]:
+        - banner [ref=e82]:
+          - generic [ref=e83]:
+            - navigation "Breadcrumb navigation" [ref=e86]:
+              - list [ref=e87]:
+                - listitem [ref=e88]:
+                  - link "Задачи" [ref=e89] [cursor=pointer]:
+                    - /url: /math
+                  - img [ref=e90]
+                - listitem [ref=e92]:
+                  - link "Математика (профиль) ЕГЭ" [ref=e93] [cursor=pointer]:
+                    - /url: /math/ege-prof/problems
+                  - img [ref=e94]
+                - listitem [ref=e96]:
+                  - generic [ref=e97]: №13 Уравнения
+            - generic [ref=e98]:
+              - button "Информация об энергии" [ref=e100]:
+                - generic [ref=e102]:
+                  - generic [ref=e103]:
+                    - img [ref=e104]
+                    - img [ref=e108]
+                  - generic [ref=e110]: "0"
+              - button "Войти или зарегистрироваться" [ref=e111] [cursor=pointer]:
+                - generic [ref=e113]:
+                  - img
+        - main [ref=e114]:
+          - generic [ref=e115]:
+            - generic [ref=e116]:
+              - heading [level=2] [ref=e117]: №13 Уравнения
+              - paragraph [ref=e118]: Тип задачи №13 для экзамена Математика (профиль) ЕГЭ
+              - paragraph [ref=e119]: 48 задач
+            - generic [ref=e120]:
+              - generic [ref=e122]:
+                - generic [ref=e123]:
+                  - generic [ref=e124]:
+                    - generic [ref=e125]:
+                      - img [ref=e126]
+                      - heading "Фильтры" [level=3] [ref=e128]
+                      - generic [ref=e129]: "1"
+                    - generic [ref=e130]:
+                      - generic [ref=e131]:
+                        - text: Показаны
+                        - generic [ref=e132]: 1–17
+                        - text: из 17 задач
+                      - button "Очистить все" [ref=e133] [cursor=pointer]:
+                        - img
+                        - text: Очистить все
+                  - generic [ref=e135]:
+                    - text: Тригонометрические уравнения, разложение на множители
+                    - 'button "Удалить фильтр: Тригонометрические уравнения, разложение на множители" [ref=e136] [cursor=pointer]':
+                      - img [ref=e137]
+                - generic [ref=e140]:
+                  - generic [ref=e141]:
+                    - generic [ref=e143]:
+                      - img [ref=e145]
+                      - generic [ref=e149]: Сложность
+                    - generic [ref=e150]:
+                      - generic "Диапазон сложности" [ref=e152]:
+                        - slider "Minimum" [ref=e156]
+                        - slider "Maximum" [ref=e158]
+                      - generic [ref=e170]:
+                        - generic [ref=e171]: Начальный
+                        - generic [ref=e172]: Экспертный
+                  - generic [ref=e173]:
+                    - generic [ref=e174]:
+                      - img [ref=e176]
+                      - generic [ref=e179]: Сортировка
+                    - generic [ref=e180]:
+                      - button "По релевантности" [ref=e181] [cursor=pointer]:
+                        - generic [ref=e182]: По релевантности
+                        - img
+                      - button "Возрастание" [ref=e183] [cursor=pointer]:
+                        - img
+                  - generic [ref=e184]:
+                    - generic [ref=e185]:
+                      - generic [ref=e186]:
+                        - img [ref=e188]
+                        - generic [ref=e191]: Топики
+                      - generic [ref=e192]: "1"
+                    - 'button "Выбрано: 1" [ref=e193] [cursor=pointer]':
+                      - generic [ref=e194]:
+                        - img
+                        - text: "Выбрано: 1"
+                      - img
+                  - generic [ref=e195]:
+                    - generic [ref=e196]:
+                      - img [ref=e198]
+                      - generic [ref=e201]: Статус
+                    - generic [ref=e202]:
+                      - button "Все" [ref=e203] [cursor=pointer]
+                      - button "Решено" [ref=e204] [cursor=pointer]
+                      - button "Не решено" [ref=e205] [cursor=pointer]
+              - generic [ref=e207]:
+                - generic [ref=e208]: Найдено 17 задач
+                - generic [ref=e209]:
+                  - generic [ref=e210]:
+                    - generic [ref=e213]:
+                      - generic [ref=e214]:
+                        - generic [ref=e216]: "№13 • #15977"
+                        - generic [ref=e217]:
+                          - img [ref=e218]
+                          - generic [ref=e222]: "1"
+                        - generic [ref=e224]:
+                          - tab "Условие" [selected] [ref=e225] [cursor=pointer]
+                          - tab "Решение" [ref=e226] [cursor=pointer]
+                      - generic [ref=e228]:
+                        - link "Открыть страницу задачи" [ref=e229] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15977
+                          - img
+                        - button "Отметить как решённую" [ref=e231] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e232] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e233] [cursor=pointer]:
+                          - img
+                    - generic [ref=e239]:
+                      - paragraph [ref=e240]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e242]:
+                          - generic [ref=e243]: (2 cos 2x +
+                          - generic [ref=e244]: 1) ⋅
+                          - generic [ref=e245]:
+                            - generic [ref=e246]:
+                              - generic [ref=e247]: (
+                              - generic [ref=e251]:
+                                - generic [ref=e252]: 2 cos 2x + 4 sin x + 3
+                                - img [ref=e254]
+                              - text: − 2 sin x − 1
+                              - generic [ref=e259]: )
+                            - text: =
+                          - generic [ref=e260]:
+                            - text: "0"
+                            - generic [ref=e261]: .
+                      - paragraph [ref=e262]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e265]:
+                          - generic [ref=e266]:
+                            - generic [ref=e267]: "["
+                            - generic [ref=e272]:
+                              - generic [ref=e273]: "2"
+                              - generic [ref=e275]: π
+                            - text: ;
+                            - generic [ref=e283]:
+                              - generic [ref=e284]: "2"
+                              - generic [ref=e286]: 3π
+                            - generic [ref=e290]: "]"
+                          - generic [ref=e291]: .
+                    - generic [ref=e298]:
+                      - textbox "Введите ответ или решение..." [ref=e299]
+                      - button "Attach" [ref=e301] [cursor=pointer]:
+                        - img
+                        - generic [ref=e302]: Attach
+                  - generic [ref=e303]:
+                    - generic [ref=e306]:
+                      - generic [ref=e307]:
+                        - generic [ref=e309]: "№13 • #15144"
+                        - generic [ref=e310]:
+                          - img [ref=e311]
+                          - generic [ref=e315]: "6"
+                        - generic [ref=e317]:
+                          - tab "Условие" [selected] [ref=e318] [cursor=pointer]
+                          - tab "Решение" [ref=e319] [cursor=pointer]
+                      - generic [ref=e321]:
+                        - link "Открыть страницу задачи" [ref=e322] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15144
+                          - img
+                        - button "Отметить как решённую" [ref=e324] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e325] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e326] [cursor=pointer]:
+                          - img
+                    - generic [ref=e332]:
+                      - paragraph [ref=e333]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e335]:
+                          - generic [ref=e336]:
+                            - generic [ref=e340]:
+                              - generic [ref=e341]: "2"
+                              - img [ref=e343]
+                            - text: sin
+                            - generic [ref=e348]:
+                              - generic [ref=e349]: (
+                              - text: x +
+                              - generic [ref=e354]:
+                                - generic [ref=e355]: "4"
+                                - generic [ref=e357]: π
+                              - generic [ref=e361]: )
+                            - text: +
+                          - generic [ref=e362]:
+                            - text: "2"
+                            - generic [ref=e363]:
+                              - text: sin
+                              - generic [ref=e368]: "2"
+                            - text: x =
+                          - generic [ref=e369]: sin x +
+                          - generic [ref=e370]:
+                            - text: "2"
+                            - generic [ref=e371]: .
+                      - paragraph [ref=e372]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e375]:
+                          - generic [ref=e376]:
+                            - generic [ref=e377]: "["
+                            - text: 2π;
+                            - generic [ref=e382]:
+                              - generic [ref=e383]: "2"
+                              - generic [ref=e385]: 7π
+                            - generic [ref=e389]: "]"
+                          - generic [ref=e390]: .
+                    - generic [ref=e397]:
+                      - textbox "Введите ответ или решение..." [ref=e398]
+                      - button "Attach" [ref=e400] [cursor=pointer]:
+                        - img
+                        - generic [ref=e401]: Attach
+                  - generic [ref=e402]:
+                    - generic [ref=e405]:
+                      - generic [ref=e406]:
+                        - generic [ref=e408]: "№13 • #15143"
+                        - generic [ref=e409]:
+                          - img [ref=e410]
+                          - generic [ref=e414]: "6"
+                        - generic [ref=e416]:
+                          - tab "Условие" [selected] [ref=e417] [cursor=pointer]
+                          - tab "Решение" [ref=e418] [cursor=pointer]
+                      - generic [ref=e420]:
+                        - link "Открыть страницу задачи" [ref=e421] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15143
+                          - img
+                        - button "Отметить как решённую" [ref=e423] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e424] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e425] [cursor=pointer]:
+                          - img
+                    - generic [ref=e431]:
+                      - paragraph [ref=e432]: а) Решите уравнение
+                      - generic [ref=e435]:
+                        - generic [ref=e436]:
+                          - text: 2 sin
+                          - generic [ref=e437]:
+                            - generic [ref=e438]: (
+                            - text: x +
+                            - generic [ref=e443]:
+                              - generic [ref=e444]: "6"
+                              - generic [ref=e446]: π
+                            - generic [ref=e450]: )
+                          - text: −
+                        - generic [ref=e451]:
+                          - text: "2"
+                          - generic [ref=e455]:
+                            - generic [ref=e456]: "3"
+                            - img [ref=e458]
+                          - generic [ref=e463]:
+                            - text: cos
+                            - generic [ref=e468]: "2"
+                          - text: x =
+                        - generic [ref=e469]: cos x −
+                        - generic [ref=e470]:
+                          - text: "2"
+                          - generic [ref=e474]:
+                            - generic [ref=e475]: "3"
+                            - img [ref=e477]
+                          - text: .
+                      - paragraph [ref=e482]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e485]:
+                          - generic [ref=e486]:
+                            - generic [ref=e487]: "["
+                            - text: −
+                            - generic [ref=e492]:
+                              - generic [ref=e493]: "2"
+                              - generic [ref=e495]: 5π
+                            - text: ; −π
+                            - generic [ref=e499]: "]"
+                          - generic [ref=e500]: .
+                    - generic [ref=e507]:
+                      - textbox "Введите ответ или решение..." [ref=e508]
+                      - button "Attach" [ref=e510] [cursor=pointer]:
+                        - img
+                        - generic [ref=e511]: Attach
+                  - generic [ref=e512]:
+                    - generic [ref=e515]:
+                      - generic [ref=e516]:
+                        - generic [ref=e518]: "№13 • #15140"
+                        - generic [ref=e519]:
+                          - img [ref=e520]
+                          - generic [ref=e524]: "6"
+                        - generic [ref=e526]:
+                          - tab "Условие" [selected] [ref=e527] [cursor=pointer]
+                          - tab "Решение" [ref=e528] [cursor=pointer]
+                      - generic [ref=e530]:
+                        - link "Открыть страницу задачи" [ref=e531] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15140
+                          - img
+                        - button "Отметить как решённую" [ref=e533] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e534] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e535] [cursor=pointer]:
+                          - img
+                    - generic [ref=e541]:
+                      - paragraph [ref=e542]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e544]:
+                          - generic [ref=e545]:
+                            - text: "2"
+                            - generic [ref=e546]:
+                              - text: sin
+                              - generic [ref=e551]: "2"
+                            - text: x +
+                          - generic [ref=e552]:
+                            - generic [ref=e556]:
+                              - generic [ref=e557]: "2"
+                              - img [ref=e559]
+                            - text: sin
+                            - generic [ref=e564]:
+                              - generic [ref=e565]: (
+                              - text: x +
+                              - generic [ref=e570]:
+                                - generic [ref=e571]: "4"
+                                - generic [ref=e573]: π
+                              - generic [ref=e577]: )
+                            - text: =
+                          - generic [ref=e578]:
+                            - text: cos x
+                            - generic [ref=e579]: .
+                      - paragraph [ref=e580]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e583]:
+                          - text: "[−2π; −"
+                          - generic [ref=e588]:
+                            - generic [ref=e589]: "2"
+                            - generic [ref=e591]: π
+                          - text: "]"
+                          - generic [ref=e595]: .
+                    - generic [ref=e602]:
+                      - textbox "Введите ответ или решение..." [ref=e603]
+                      - button "Attach" [ref=e605] [cursor=pointer]:
+                        - img
+                        - generic [ref=e606]: Attach
+                  - generic [ref=e607]:
+                    - generic [ref=e610]:
+                      - generic [ref=e611]:
+                        - generic [ref=e613]: "№13 • #15132"
+                        - generic [ref=e614]:
+                          - img [ref=e615]
+                          - generic [ref=e619]: "7"
+                        - generic [ref=e621]:
+                          - tab "Условие" [selected] [ref=e622] [cursor=pointer]
+                          - tab "Решение" [ref=e623] [cursor=pointer]
+                      - generic [ref=e625]:
+                        - link "Открыть страницу задачи" [ref=e626] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15132
+                          - img
+                        - button "Отметить как решённую" [ref=e628] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e629] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e630] [cursor=pointer]:
+                          - img
+                    - generic [ref=e636]:
+                      - paragraph [ref=e637]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e639]:
+                          - generic [ref=e640]:
+                            - text: "2"
+                            - generic [ref=e641]:
+                              - text: sin
+                              - generic [ref=e646]: "2"
+                            - text: x +
+                          - generic [ref=e647]:
+                            - generic [ref=e651]:
+                              - generic [ref=e652]: "2"
+                              - img [ref=e654]
+                            - text: sin(2π −
+                          - generic [ref=e659]: x) +
+                          - generic [ref=e660]:
+                            - generic [ref=e664]:
+                              - generic [ref=e665]: "3"
+                              - img [ref=e667]
+                            - text: sin 2x =
+                          - generic [ref=e672]:
+                            - generic [ref=e676]:
+                              - generic [ref=e677]: "6"
+                              - img [ref=e679]
+                            - text: cos x
+                            - generic [ref=e684]: .
+                      - paragraph [ref=e685]:
+                        - text: б) Найдите все корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e688]:
+                          - generic [ref=e689]:
+                            - generic [ref=e690]: "["
+                            - text: −π;
+                            - generic [ref=e695]:
+                              - generic [ref=e696]: "2"
+                              - generic [ref=e698]: π
+                            - generic [ref=e702]: "]"
+                          - generic [ref=e703]: .
+                    - generic [ref=e710]:
+                      - textbox "Введите ответ или решение..." [ref=e711]
+                      - button "Attach" [ref=e713] [cursor=pointer]:
+                        - img
+                        - generic [ref=e714]: Attach
+                  - generic [ref=e715]:
+                    - generic [ref=e718]:
+                      - generic [ref=e719]:
+                        - generic [ref=e721]: "№13 • #15125"
+                        - generic [ref=e722]:
+                          - img [ref=e723]
+                          - generic [ref=e727]: "6"
+                        - generic [ref=e729]:
+                          - tab "Условие" [selected] [ref=e730] [cursor=pointer]
+                          - tab "Решение" [ref=e731] [cursor=pointer]
+                      - generic [ref=e733]:
+                        - link "Открыть страницу задачи" [ref=e734] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15125
+                          - img
+                        - button "Отметить как решённую" [ref=e736] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e737] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e738] [cursor=pointer]:
+                          - img
+                    - generic [ref=e744]:
+                      - paragraph [ref=e745]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e747]:
+                          - generic [ref=e748]:
+                            - text: "2"
+                            - generic [ref=e749]:
+                              - text: sin
+                              - generic [ref=e754]: "2"
+                            - generic [ref=e755]:
+                              - generic [ref=e756]: (
+                              - generic [ref=e761]:
+                                - generic [ref=e762]: "2"
+                                - generic [ref=e764]: π
+                              - text: − x
+                              - generic [ref=e768]: )
+                            - text: +
+                          - generic [ref=e769]: sin 2x =
+                          - generic [ref=e770]:
+                            - text: "0"
+                            - generic [ref=e771]: .
+                      - paragraph [ref=e772]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e775]:
+                          - generic [ref=e776]:
+                            - generic [ref=e777]: "["
+                            - text: 3π;
+                            - generic [ref=e782]:
+                              - generic [ref=e783]: "2"
+                              - generic [ref=e785]: 9π
+                            - generic [ref=e789]: "]"
+                          - generic [ref=e790]: .
+                    - generic [ref=e797]:
+                      - textbox "Введите ответ или решение..." [ref=e798]
+                      - button "Attach" [ref=e800] [cursor=pointer]:
+                        - img
+                        - generic [ref=e801]: Attach
+                  - generic [ref=e802]:
+                    - generic [ref=e805]:
+                      - generic [ref=e806]:
+                        - generic [ref=e808]: "№13 • #15114"
+                        - generic [ref=e809]:
+                          - img [ref=e810]
+                          - generic [ref=e814]: "5"
+                        - generic [ref=e816]:
+                          - tab "Условие" [selected] [ref=e817] [cursor=pointer]
+                          - tab "Решение" [ref=e818] [cursor=pointer]
+                      - generic [ref=e820]:
+                        - link "Открыть страницу задачи" [ref=e821] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15114
+                          - img
+                        - button "Отметить как решённую" [ref=e823] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e824] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e825] [cursor=pointer]:
+                          - img
+                    - generic [ref=e831]:
+                      - paragraph [ref=e832]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e834]:
+                          - generic [ref=e835]:
+                            - text: "2"
+                            - generic [ref=e836]:
+                              - text: cos
+                              - generic [ref=e842]: "3"
+                            - text: x −
+                          - generic [ref=e843]:
+                            - generic [ref=e844]:
+                              - text: cos
+                              - generic [ref=e850]: "2"
+                            - text: x +
+                          - generic [ref=e851]: 2 cos x −
+                          - generic [ref=e852]: 1 =
+                          - generic [ref=e853]:
+                            - text: "0"
+                            - generic [ref=e854]: .
+                      - paragraph [ref=e855]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e858]:
+                          - generic [ref=e859]:
+                            - generic [ref=e860]: "["
+                            - text: 2π;
+                            - generic [ref=e865]:
+                              - generic [ref=e866]: "2"
+                              - generic [ref=e868]: 7π
+                            - generic [ref=e872]: "]"
+                          - generic [ref=e873]: .
+                    - generic [ref=e880]:
+                      - textbox "Введите ответ или решение..." [ref=e881]
+                      - button "Attach" [ref=e883] [cursor=pointer]:
+                        - img
+                        - generic [ref=e884]: Attach
+                  - generic [ref=e885]:
+                    - generic [ref=e888]:
+                      - generic [ref=e889]:
+                        - generic [ref=e891]: "№13 • #15113"
+                        - generic [ref=e892]:
+                          - img [ref=e893]
+                          - generic [ref=e897]: "7"
+                        - generic [ref=e899]:
+                          - tab "Условие" [selected] [ref=e900] [cursor=pointer]
+                          - tab "Решение" [ref=e901] [cursor=pointer]
+                      - generic [ref=e903]:
+                        - link "Открыть страницу задачи" [ref=e904] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15113
+                          - img
+                        - button "Отметить как решённую" [ref=e906] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e907] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e908] [cursor=pointer]:
+                          - img
+                    - generic [ref=e914]:
+                      - paragraph [ref=e915]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e917]:
+                          - generic [ref=e918]:
+                            - text: "2"
+                            - generic [ref=e919]:
+                              - text: cos
+                              - generic [ref=e924]: "3"
+                            - text: x +
+                          - generic [ref=e925]:
+                            - generic [ref=e929]:
+                              - generic [ref=e930]: "3"
+                              - img [ref=e932]
+                            - generic [ref=e937]:
+                              - text: cos
+                              - generic [ref=e942]: "2"
+                            - text: x +
+                          - generic [ref=e943]: 2 cos x +
+                          - generic [ref=e944]:
+                            - generic [ref=e948]:
+                              - generic [ref=e949]: "3"
+                              - img [ref=e951]
+                            - text: =
+                          - generic [ref=e956]:
+                            - text: "0"
+                            - generic [ref=e957]: .
+                      - paragraph [ref=e958]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e961]:
+                          - text: "[−2π; −"
+                          - generic [ref=e966]:
+                            - generic [ref=e967]: "2"
+                            - generic [ref=e969]: π
+                          - text: "]"
+                          - generic [ref=e973]: .
+                    - generic [ref=e980]:
+                      - textbox "Введите ответ или решение..." [ref=e981]
+                      - button "Attach" [ref=e983] [cursor=pointer]:
+                        - img
+                        - generic [ref=e984]: Attach
+                  - generic [ref=e985]:
+                    - generic [ref=e988]:
+                      - generic [ref=e989]:
+                        - generic [ref=e991]: "№13 • #15105"
+                        - generic [ref=e992]:
+                          - img [ref=e993]
+                          - generic [ref=e997]: "5"
+                        - generic [ref=e999]:
+                          - tab "Условие" [selected] [ref=e1000] [cursor=pointer]
+                          - tab "Решение" [ref=e1001] [cursor=pointer]
+                      - generic [ref=e1003]:
+                        - link "Открыть страницу задачи" [ref=e1004] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15105
+                          - img
+                        - button "Отметить как решённую" [ref=e1006] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1007] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1008] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1014]:
+                      - paragraph [ref=e1015]: а) Решите уравнение
+                      - paragraph [ref=e1016]:
+                        - text: "["
+                        - text: \sin 2x - \sin(-x) + 2\cos(-x) + 1 = 0.
+                        - text: "]"
+                      - paragraph [ref=e1017]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1020]:
+                          - generic [ref=e1021]:
+                            - generic [ref=e1022]: "["
+                            - generic [ref=e1027]:
+                              - generic [ref=e1028]: "2"
+                              - generic [ref=e1030]: 3π
+                            - text: ; 3π
+                            - generic [ref=e1034]: "]"
+                          - generic [ref=e1035]: .
+                    - generic [ref=e1042]:
+                      - textbox "Введите ответ или решение..." [ref=e1043]
+                      - button "Attach" [ref=e1045] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1046]: Attach
+                  - generic [ref=e1047]:
+                    - generic [ref=e1050]:
+                      - generic [ref=e1051]:
+                        - generic [ref=e1053]: "№13 • #15103"
+                        - generic [ref=e1054]:
+                          - img [ref=e1055]
+                          - generic [ref=e1059]: "6"
+                        - generic [ref=e1061]:
+                          - tab "Условие" [selected] [ref=e1062] [cursor=pointer]
+                          - tab "Решение" [ref=e1063] [cursor=pointer]
+                      - generic [ref=e1065]:
+                        - link "Открыть страницу задачи" [ref=e1066] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15103
+                          - img
+                        - button "Отметить как решённую" [ref=e1068] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1069] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1070] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1076]:
+                      - paragraph [ref=e1077]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e1079]:
+                          - generic [ref=e1080]: cos 2x −
+                          - generic [ref=e1081]:
+                            - generic [ref=e1085]:
+                              - generic [ref=e1086]: "2"
+                              - img [ref=e1088]
+                            - text: cos
+                            - generic [ref=e1093]:
+                              - generic [ref=e1094]: (
+                              - generic [ref=e1099]:
+                                - generic [ref=e1100]: "2"
+                                - generic [ref=e1102]: 3π
+                              - text: + x
+                              - generic [ref=e1106]: )
+                            - text: −
+                          - generic [ref=e1107]: 1 =
+                          - generic [ref=e1108]: "0."
+                      - paragraph [ref=e1109]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1112]:
+                          - generic [ref=e1113]:
+                            - generic [ref=e1114]: "["
+                            - generic [ref=e1119]:
+                              - generic [ref=e1120]: "2"
+                              - generic [ref=e1122]: 3π
+                            - text: ; 3π
+                            - generic [ref=e1126]: "]"
+                          - text: .
+                    - generic [ref=e1133]:
+                      - textbox "Введите ответ или решение..." [ref=e1134]
+                      - button "Attach" [ref=e1136] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1137]: Attach
+                  - generic [ref=e1138]:
+                    - generic [ref=e1141]:
+                      - generic [ref=e1142]:
+                        - generic [ref=e1144]: "№13 • #15100"
+                        - generic [ref=e1145]:
+                          - img [ref=e1146]
+                          - generic [ref=e1150]: "6"
+                        - generic [ref=e1152]:
+                          - tab "Условие" [selected] [ref=e1153] [cursor=pointer]
+                          - tab "Решение" [ref=e1154] [cursor=pointer]
+                      - generic [ref=e1156]:
+                        - link "Открыть страницу задачи" [ref=e1157] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15100
+                          - img
+                        - button "Отметить как решённую" [ref=e1159] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1160] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1161] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1167]:
+                      - paragraph [ref=e1168]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e1170]:
+                          - generic [ref=e1171]: sin 2x +
+                          - generic [ref=e1172]:
+                            - generic [ref=e1176]:
+                              - generic [ref=e1177]: "2"
+                              - img [ref=e1179]
+                            - text: sin(x +
+                          - generic [ref=e1184]: π) =
+                          - generic [ref=e1185]:
+                            - text: "0"
+                            - generic [ref=e1186]: .
+                      - paragraph [ref=e1187]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1190]:
+                          - generic [ref=e1191]:
+                            - generic [ref=e1192]: "["
+                            - text: −4π; −
+                            - generic [ref=e1197]:
+                              - generic [ref=e1198]: "2"
+                              - generic [ref=e1200]: 5π
+                            - generic [ref=e1204]: "]"
+                          - generic [ref=e1205]: .
+                    - generic [ref=e1212]:
+                      - textbox "Введите ответ или решение..." [ref=e1213]
+                      - button "Attach" [ref=e1215] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1216]: Attach
+                  - generic [ref=e1217]:
+                    - generic [ref=e1220]:
+                      - generic [ref=e1221]:
+                        - generic [ref=e1223]: "№13 • #15099"
+                        - generic [ref=e1224]:
+                          - img [ref=e1225]
+                          - generic [ref=e1229]: "5"
+                        - generic [ref=e1231]:
+                          - tab "Условие" [selected] [ref=e1232] [cursor=pointer]
+                          - tab "Решение" [ref=e1233] [cursor=pointer]
+                      - generic [ref=e1235]:
+                        - link "Открыть страницу задачи" [ref=e1236] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15099
+                          - img
+                        - button "Отметить как решённую" [ref=e1238] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1239] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1240] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1246]:
+                      - paragraph [ref=e1247]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e1249]:
+                          - generic [ref=e1250]: cos 2x +
+                          - generic [ref=e1251]:
+                            - generic [ref=e1255]:
+                              - generic [ref=e1256]: "2"
+                              - img [ref=e1258]
+                            - text: cos(x +
+                          - generic [ref=e1263]: π) +
+                          - generic [ref=e1264]: 1 =
+                          - generic [ref=e1265]:
+                            - text: "0"
+                            - generic [ref=e1266]: .
+                      - paragraph [ref=e1267]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1270]:
+                          - generic [ref=e1271]:
+                            - generic [ref=e1272]: "["
+                            - text: −4π; −
+                            - generic [ref=e1277]:
+                              - generic [ref=e1278]: "2"
+                              - generic [ref=e1280]: 5π
+                            - generic [ref=e1284]: "]"
+                          - generic [ref=e1285]: .
+                    - generic [ref=e1292]:
+                      - textbox "Введите ответ или решение..." [ref=e1293]
+                      - button "Attach" [ref=e1295] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1296]: Attach
+                  - generic [ref=e1297]:
+                    - generic [ref=e1300]:
+                      - generic [ref=e1301]:
+                        - generic [ref=e1303]: "№13 • #15082"
+                        - generic [ref=e1304]:
+                          - img [ref=e1305]
+                          - generic [ref=e1309]: "5"
+                        - generic [ref=e1311]:
+                          - tab "Условие" [selected] [ref=e1312] [cursor=pointer]
+                          - tab "Решение" [ref=e1313] [cursor=pointer]
+                      - generic [ref=e1315]:
+                        - link "Открыть страницу задачи" [ref=e1316] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15082
+                          - img
+                        - button "Отметить как решённую" [ref=e1318] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1319] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1320] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1326]:
+                      - paragraph [ref=e1327]: а) Решите уравнение
+                      - generic [ref=e1330]:
+                        - generic [ref=e1331]:
+                          - text: 2 sin
+                          - generic [ref=e1332]:
+                            - generic [ref=e1333]: (
+                            - text: 2x +
+                            - generic [ref=e1338]:
+                              - generic [ref=e1339]: "6"
+                              - generic [ref=e1341]: π
+                            - generic [ref=e1345]: )
+                          - text: −
+                        - generic [ref=e1346]: cos x =
+                        - generic [ref=e1347]:
+                          - generic [ref=e1351]:
+                            - generic [ref=e1352]: "3"
+                            - img [ref=e1354]
+                          - text: sin 2x −
+                        - generic [ref=e1359]: "1"
+                      - paragraph [ref=e1360]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1363]:
+                          - generic [ref=e1364]:
+                            - generic [ref=e1365]: "["
+                            - generic [ref=e1370]:
+                              - generic [ref=e1371]: "2"
+                              - generic [ref=e1373]: 5π
+                            - text: ; 4π
+                            - generic [ref=e1377]: "]"
+                          - generic [ref=e1378]: .
+                    - generic [ref=e1385]:
+                      - textbox "Введите ответ или решение..." [ref=e1386]
+                      - button "Attach" [ref=e1388] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1389]: Attach
+                  - generic [ref=e1390]:
+                    - generic [ref=e1393]:
+                      - generic [ref=e1394]:
+                        - generic [ref=e1396]: "№13 • #15061"
+                        - generic [ref=e1397]:
+                          - img [ref=e1398]
+                          - generic [ref=e1402]: "6"
+                        - generic [ref=e1404]:
+                          - tab "Условие" [selected] [ref=e1405] [cursor=pointer]
+                          - tab "Решение" [ref=e1406] [cursor=pointer]
+                      - generic [ref=e1408]:
+                        - link "Открыть страницу задачи" [ref=e1409] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15061
+                          - img
+                        - button "Отметить как решённую" [ref=e1411] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1412] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1413] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1419]:
+                      - paragraph [ref=e1420]: а) Решите уравнение
+                      - generic [ref=e1423]:
+                        - generic [ref=e1424]:
+                          - text: "2"
+                          - generic [ref=e1428]:
+                            - generic [ref=e1429]: "3"
+                            - img [ref=e1431]
+                          - generic [ref=e1436]:
+                            - text: sin
+                            - generic [ref=e1441]: "2"
+                          - generic [ref=e1442]:
+                            - generic [ref=e1443]: (
+                            - text: x +
+                            - generic [ref=e1448]:
+                              - generic [ref=e1449]: "2"
+                              - generic [ref=e1451]: 3π
+                            - generic [ref=e1455]: )
+                          - text: +
+                        - generic [ref=e1456]: sin 2x =
+                        - generic [ref=e1457]: "0."
+                      - paragraph [ref=e1458]: б) Укажите корни этого уравнения, принадлежащие отрезку
+                      - generic [ref=e1462]:
+                        - generic [ref=e1463]:
+                          - generic [ref=e1464]: "["
+                          - text: −4π; −
+                          - generic [ref=e1469]:
+                            - generic [ref=e1470]: "2"
+                            - generic [ref=e1472]: 5π
+                          - generic [ref=e1476]: "]"
+                        - text: .
+                    - generic [ref=e1483]:
+                      - textbox "Введите ответ или решение..." [ref=e1484]
+                      - button "Attach" [ref=e1486] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1487]: Attach
+                  - generic [ref=e1488]:
+                    - generic [ref=e1491]:
+                      - generic [ref=e1492]:
+                        - generic [ref=e1494]: "№13 • #15059"
+                        - generic [ref=e1495]:
+                          - img [ref=e1496]
+                          - generic [ref=e1500]: "6"
+                        - generic [ref=e1502]:
+                          - tab "Условие" [selected] [ref=e1503] [cursor=pointer]
+                          - tab "Решение" [ref=e1504] [cursor=pointer]
+                      - generic [ref=e1506]:
+                        - link "Открыть страницу задачи" [ref=e1507] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15059
+                          - img
+                        - button "Отметить как решённую" [ref=e1509] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1510] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1511] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1517]:
+                      - paragraph [ref=e1518]: а) Решите уравнение
+                      - generic [ref=e1521]:
+                        - generic [ref=e1522]: cos 2x +
+                        - generic [ref=e1523]:
+                          - generic [ref=e1527]:
+                            - generic [ref=e1528]: "3"
+                            - img [ref=e1530]
+                          - text: sin
+                          - generic [ref=e1535]:
+                            - generic [ref=e1536]: (
+                            - generic [ref=e1541]:
+                              - generic [ref=e1542]: "2"
+                              - generic [ref=e1544]: π
+                            - text: + x
+                            - generic [ref=e1548]: )
+                          - text: +
+                        - generic [ref=e1549]: 1 =
+                        - generic [ref=e1550]: "0."
+                      - paragraph [ref=e1551]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1554]:
+                          - generic [ref=e1555]:
+                            - generic [ref=e1556]: "["
+                            - text: −3π; −
+                            - generic [ref=e1561]:
+                              - generic [ref=e1562]: "2"
+                              - generic [ref=e1564]: 3π
+                            - generic [ref=e1568]: "]"
+                          - generic [ref=e1569]: .
+                    - generic [ref=e1576]:
+                      - textbox "Введите ответ или решение..." [ref=e1577]
+                      - button "Attach" [ref=e1579] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1580]: Attach
+                  - generic [ref=e1581]:
+                    - generic [ref=e1584]:
+                      - generic [ref=e1585]:
+                        - generic [ref=e1587]: "№13 • #15054"
+                        - generic [ref=e1588]:
+                          - img [ref=e1589]
+                          - generic [ref=e1593]: "6"
+                        - generic [ref=e1595]:
+                          - tab "Условие" [selected] [ref=e1596] [cursor=pointer]
+                          - tab "Решение" [ref=e1597] [cursor=pointer]
+                      - generic [ref=e1599]:
+                        - link "Открыть страницу задачи" [ref=e1600] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15054
+                          - img
+                        - button "Отметить как решённую" [ref=e1602] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1603] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1604] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1610]:
+                      - paragraph [ref=e1611]:
+                        - text: а) Решите уравнение
+                        - generic [ref=e1613]:
+                          - generic [ref=e1614]: sin 2x +
+                          - generic [ref=e1615]: 2 sin(−x) +
+                          - generic [ref=e1616]: cos(−x) −
+                          - generic [ref=e1617]: 1 =
+                          - generic [ref=e1618]:
+                            - text: "0"
+                            - generic [ref=e1619]: .
+                      - paragraph [ref=e1620]:
+                        - text: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1623]:
+                          - generic [ref=e1624]:
+                            - generic [ref=e1625]: "["
+                            - text: 2π;
+                            - generic [ref=e1630]:
+                              - generic [ref=e1631]: "2"
+                              - generic [ref=e1633]: 7π
+                            - generic [ref=e1637]: "]"
+                          - generic [ref=e1638]: .
+                    - generic [ref=e1645]:
+                      - textbox "Введите ответ или решение..." [ref=e1646]
+                      - button "Attach" [ref=e1648] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1649]: Attach
+                  - generic [ref=e1650]:
+                    - generic [ref=e1653]:
+                      - generic [ref=e1654]:
+                        - generic [ref=e1656]: "№13 • #15046"
+                        - generic [ref=e1657]:
+                          - img [ref=e1658]
+                          - generic [ref=e1662]: "6"
+                        - generic [ref=e1664]:
+                          - tab "Условие" [selected] [ref=e1665] [cursor=pointer]
+                          - tab "Решение" [ref=e1666] [cursor=pointer]
+                      - generic [ref=e1668]:
+                        - link "Открыть страницу задачи" [ref=e1669] [cursor=pointer]:
+                          - /url: /math/ege-prof/problems/15046
+                          - img
+                        - button "Отметить как решённую" [ref=e1671] [cursor=pointer]:
+                          - img
+                        - button "В избранное" [ref=e1672] [cursor=pointer]:
+                          - img
+                        - button "Пожаловаться на задачу" [ref=e1673] [cursor=pointer]:
+                          - img
+                    - generic [ref=e1674]:
+                      - generic [ref=e1679]:
+                        - paragraph [ref=e1680]:
+                          - text: а) Решите уравнение
+                          - generic [ref=e1682]:
+                            - generic [ref=e1683]: 2 cos x −
+                            - generic [ref=e1684]:
+                              - generic [ref=e1688]:
+                                - generic [ref=e1689]: "3"
+                                - img [ref=e1691]
+                              - generic [ref=e1696]:
+                                - text: sin
+                                - generic [ref=e1701]: "2"
+                              - text: x =
+                            - generic [ref=e1702]:
+                              - text: "2"
+                              - generic [ref=e1703]:
+                                - text: cos
+                                - generic [ref=e1708]: "3"
+                              - text: x
+                              - generic [ref=e1709]: .
+                        - paragraph [ref=e1710]: б) Укажите корни этого уравнения, принадлежащие отрезку
+                        - generic [ref=e1714]:
+                          - generic [ref=e1715]:
+                            - generic [ref=e1716]: "["
+                            - text: −
+                            - generic [ref=e1721]:
+                              - generic [ref=e1722]: "2"
+                              - generic [ref=e1724]: 7π
+                            - text: ; −2π
+                            - generic [ref=e1728]: "]"
+                          - text: .
+                      - generic [ref=e1729]:
+                        - generic [ref=e1730]:
+                          - generic [ref=e1731]:
+                            - button [ref=e1732] [cursor=pointer]:
+                              - img
+                            - button [ref=e1733] [cursor=pointer]:
+                              - img
+                          - generic [ref=e1734]:
+                            - button [ref=e1735] [cursor=pointer]:
+                              - img
+                            - button [ref=e1736] [cursor=pointer]:
+                              - img
+                            - button [ref=e1737] [cursor=pointer]:
+                              - img
+                        - generic [ref=e1740]:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic [ref=e1741]:
+                                  - button [ref=e1743] [cursor=pointer]:
+                                    - img [ref=e1744]
+                                  - region "Операции выбранной фигуры":
+                                    - heading "Операции выбранной фигуры" [level=2] [ref=e1747]
+                                    - generic [ref=e1749]:
+                                      - generic [ref=e1750]:
+                                        - heading [level=3] [ref=e1751]: Обводка
+                                        - dialog [ref=e1753]:
+                                          - generic [ref=e1754]:
+                                            - button "#1e1e1e" [ref=e1755] [cursor=pointer]
+                                            - button "#e03131" [ref=e1757] [cursor=pointer]
+                                            - button "#2f9e44" [ref=e1758] [cursor=pointer]
+                                            - button "#1971c2" [ref=e1759] [cursor=pointer]
+                                            - button "#f08c00" [ref=e1760] [cursor=pointer]
+                                          - button "Обводка" [ref=e1762] [cursor=pointer]
+                                      - generic [ref=e1763]:
+                                        - heading [level=3] [ref=e1764]: Фон
+                                        - dialog [ref=e1766]:
+                                          - generic [ref=e1767]:
+                                            - button "transparent" [ref=e1768] [cursor=pointer]
+                                            - button "#ffc9c9" [ref=e1770] [cursor=pointer]
+                                            - button "#b2f2bb" [ref=e1771] [cursor=pointer]
+                                            - button "#a5d8ff" [ref=e1772] [cursor=pointer]
+                                            - button "#ffec99" [ref=e1773] [cursor=pointer]
+                                          - button "Фон" [ref=e1775] [cursor=pointer]
+                                      - group "Толщина штриха" [ref=e1776]:
+                                        - generic [ref=e1777]: Толщина штриха
+                                        - generic [ref=e1778]:
+                                          - generic "Тонкая" [ref=e1779] [cursor=pointer]:
+                                            - radio [checked]
+                                            - img [ref=e1780]
+                                          - generic "Жирная" [ref=e1781] [cursor=pointer]:
+                                            - radio
+                                            - img [ref=e1782]
+                                          - generic "Очень жирная" [ref=e1783] [cursor=pointer]:
+                                            - radio
+                                            - img [ref=e1784]
+                                      - generic [ref=e1785]:
+                                        - text: Непрозрачность
+                                        - generic [ref=e1786]:
+                                          - slider "Непрозрачность 100 0" [ref=e1787]: "100"
+                                          - generic [ref=e1788]: "100"
+                                          - generic [ref=e1789]: "0"
+                                      - group "Слои" [ref=e1790]:
+                                        - generic [ref=e1791]: Слои
+                                        - generic [ref=e1792]:
+                                          - button "На задний план — Ctrl+Shift+[" [ref=e1793] [cursor=pointer]:
+                                            - img [ref=e1794]
+                                          - button "Переместить назад — Ctrl+[" [ref=e1799] [cursor=pointer]:
+                                            - img [ref=e1800]
+                                          - button "Переместить вперед — Ctrl+]" [ref=e1805] [cursor=pointer]:
+                                            - img [ref=e1806]
+                                          - button "На передний план — Ctrl+Shift+]" [ref=e1811] [cursor=pointer]:
+                                            - img [ref=e1812]
+                                - region "Фигуры":
+                                  - generic [ref=e1820]:
+                                    - generic:
+                                      - generic: Нажмите и перетаскивайте, отпустите по завершении
+                                    - heading "Фигуры" [level=2] [ref=e1821]
+                                    - generic [ref=e1822]:
+                                      - generic "Сохранять выбранный инструмент активным после рисования — Q" [ref=e1823] [cursor=pointer]:
+                                        - checkbox "Сохранять выбранный инструмент активным после рисования"
+                                        - img [ref=e1825]
+                                      - generic "Рука (перемещение холста) — H" [ref=e1832] [cursor=pointer]:
+                                        - radio "Рука (перемещение холста) — H"
+                                        - img [ref=e1834]
+                                      - generic "Выделение области — V или 1" [ref=e1841] [cursor=pointer]:
+                                        - radio "Выделение области"
+                                        - generic [ref=e1842]:
+                                          - img [ref=e1843]
+                                          - generic [ref=e1848]: "1"
+                                      - generic "Прямоугольник — R или 2" [ref=e1849] [cursor=pointer]:
+                                        - radio "Прямоугольник"
+                                        - generic [ref=e1850]:
+                                          - img [ref=e1851]
+                                          - generic [ref=e1855]: "2"
+                                      - generic "Ромб — D или 3" [ref=e1856] [cursor=pointer]:
+                                        - radio "Ромб"
+                                        - generic [ref=e1857]:
+                                          - img [ref=e1858]
+                                          - generic [ref=e1862]: "3"
+                                      - generic "Эллипс — O или 4" [ref=e1863] [cursor=pointer]:
+                                        - radio "Эллипс"
+                                        - generic [ref=e1864]:
+                                          - img [ref=e1865]
+                                          - generic [ref=e1869]: "4"
+                                      - generic "Cтрелка — A или 5" [ref=e1870] [cursor=pointer]:
+                                        - radio "Cтрелка"
+                                        - generic [ref=e1871]:
+                                          - img [ref=e1872]
+                                          - generic [ref=e1877]: "5"
+                                      - generic "Линия — L или 6" [ref=e1878] [cursor=pointer]:
+                                        - radio "Линия"
+                                        - generic [ref=e1879]:
+                                          - img [ref=e1880]
+                                          - generic [ref=e1881]: "6"
+                                      - generic "Чертить — P или 7" [ref=e1882] [cursor=pointer]:
+                                        - radio "Чертить" [checked]
+                                        - generic [ref=e1883]:
+                                          - img [ref=e1884]
+                                          - generic [ref=e1888]: "7"
+                                      - generic "Текст — T или 8" [ref=e1889] [cursor=pointer]:
+                                        - radio "Текст"
+                                        - generic [ref=e1890]:
+                                          - img [ref=e1891]
+                                          - generic [ref=e1896]: "8"
+                                      - generic "Вставить изображение — 9" [ref=e1897] [cursor=pointer]:
+                                        - radio "Вставить изображение"
+                                        - generic [ref=e1898]:
+                                          - img [ref=e1899]
+                                          - generic [ref=e1904]: "9"
+                                      - generic "Ластик — E или 0" [ref=e1905] [cursor=pointer]:
+                                        - radio "Ластик"
+                                        - generic [ref=e1906]:
+                                          - img [ref=e1907]
+                                          - generic [ref=e1912]: "0"
+                                      - button "More tools" [ref=e1914] [cursor=pointer]:
+                                        - img [ref=e1915]
+                                - button "Сетка" [ref=e1921] [cursor=pointer]:
+                                  - img [ref=e1922]
+                                  - generic [ref=e1924]: Сетка
+                            - contentinfo:
+                              - region "Операции холста" [ref=e1926]:
+                                - heading "Операции холста" [level=2] [ref=e1927]
+                                - generic [ref=e1929]:
+                                  - button "Уменьшить" [ref=e1930] [cursor=pointer]:
+                                    - img [ref=e1932]
+                                  - button "Сбросить масштаб" [ref=e1934] [cursor=pointer]: 100%
+                                  - button "Увеличить" [ref=e1935] [cursor=pointer]:
+                                    - img [ref=e1937]
+                                - generic [ref=e1939]:
+                                  - button "Шаг назад" [disabled] [ref=e1942]:
+                                    - img [ref=e1944]
+                                  - button "Шаг вперед" [disabled] [ref=e1948]:
+                                    - img [ref=e1950]
+                          - generic:
+                            - img
+                          - generic [ref=e1952]: Полотно
+                    - generic [ref=e1961]:
+                      - textbox "Введите ответ или решение..." [ref=e1962]
+                      - button "Attach" [active] [ref=e1964] [cursor=pointer]:
+                        - img
+                        - generic [ref=e1965]: Attach
+  - region "Notifications alt+T"
+```

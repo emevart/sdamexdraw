@@ -189,7 +189,7 @@ const LayerUI = ({
     >
       <Island
         className={CLASSES.SHAPE_ACTIONS_MENU}
-        padding={2}
+        padding={1}
         style={{
           // we want to make sure this doesn't overflow so subtracting the
           // approximate height of hamburgerMenu + footer

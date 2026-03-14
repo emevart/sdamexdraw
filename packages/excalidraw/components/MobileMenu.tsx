@@ -150,10 +150,6 @@ export const MobileMenu = ({
           appState.multiElement ? "finalize" : "duplicateSelection",
         )}
         {actionManager.renderAction("deleteSelectedElements")}
-        <div>
-          {actionManager.renderAction("undo")}
-          {actionManager.renderAction("redo")}
-        </div>
       </div>
     );
   };

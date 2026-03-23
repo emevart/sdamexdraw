@@ -818,6 +818,7 @@ export class LinearElementEditor {
           element.points[index + 1],
           index,
           appState.zoom,
+          elementsMap,
         )
       ) {
         midpoints.push(null);
@@ -827,6 +828,7 @@ export class LinearElementEditor {
       const segmentMidPoint = LinearElementEditor.getSegmentMidPoint(
         element,
         index + 1,
+        elementsMap,
       );
       midpoints.push(segmentMidPoint);
       index++;
@@ -914,6 +916,7 @@ export class LinearElementEditor {
     endPoint: P,
     index: number,
     zoom: Zoom,
+    elementsMap: ElementsMap,
   ) {
     if (isElbowArrow(element)) {
       if (index >= 0 && index < element.points.length) {
@@ -928,7 +931,10 @@ export class LinearElementEditor {
 
     let distance = pointDistance(startPoint, endPoint);
     if (element.points.length > 2 && element.roundness) {
-      const [lines, curves] = deconstructLinearOrFreeDrawElement(element);
+      const [lines, curves] = deconstructLinearOrFreeDrawElement(
+        element,
+        elementsMap,
+      );
 
       invariant(
         lines.length === 0 && curves.length > 0,
@@ -948,6 +954,7 @@ export class LinearElementEditor {
   static getSegmentMidPoint(
     element: NonDeleted<ExcalidrawLinearElement>,
     index: number,
+    elementsMap: ElementsMap,
   ): GlobalPoint {
     if (isElbowArrow(element)) {
       invariant(
@@ -960,7 +967,10 @@ export class LinearElementEditor {
       return pointFrom<GlobalPoint>(element.x + p[0], element.y + p[1]);
     }
 
-    const [lines, curves] = deconstructLinearOrFreeDrawElement(element);
+    const [lines, curves] = deconstructLinearOrFreeDrawElement(
+      element,
+      elementsMap,
+    );
 
     invariant(
       (lines.length === 0 && curves.length > 0) ||
@@ -2117,6 +2127,7 @@ export class LinearElementEditor {
       const midSegmentMidpoint = LinearElementEditor.getSegmentMidPoint(
         element,
         index + 1,
+        elementsMap,
       );
 
       x = midSegmentMidpoint[0] - boundTextElement.width / 2;

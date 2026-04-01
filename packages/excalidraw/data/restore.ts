@@ -960,6 +960,12 @@ export const restoreAppState = (
         : defaultValue;
   }
 
+  const boxSelectionMode =
+    appState.boxSelectionMode ?? localAppState?.boxSelectionMode;
+  if (boxSelectionMode !== undefined) {
+    nextAppState.boxSelectionMode = boxSelectionMode;
+  }
+
   return {
     ...nextAppState,
     cursorButton: localAppState?.cursorButton || "up",

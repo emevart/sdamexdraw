@@ -76,6 +76,10 @@ const getConfig = (outdir) => ({
     "@excalidraw/common": path.resolve(__dirname, "../packages/common/src"),
     "@excalidraw/element": path.resolve(__dirname, "../packages/element/src"),
     "@excalidraw/math": path.resolve(__dirname, "../packages/math/src"),
+    "@excalidraw/fractional-indexing": path.resolve(
+      __dirname,
+      "../packages/fractional-indexing/src",
+    ),
   },
   loader: {
     ".woff2": "file",

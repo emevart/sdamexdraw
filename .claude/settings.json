@@ -1,0 +1,47 @@
+{
+  "plansDirectory": ".claude/plans",
+  "worktree": {
+    "symlinkDirectories": ["node_modules", ".yarn"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash H:/excalidraw/.claude/hooks/block-force-push-master.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash H:/excalidraw/.claude/hooks/block-rm-rf-critical.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash H:/excalidraw/.claude/hooks/warn-publish-without-changelog.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash H:/excalidraw/.claude/hooks/eslint-fix.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash H:/excalidraw/.claude/hooks/check-changelog.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

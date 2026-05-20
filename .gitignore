@@ -27,6 +27,10 @@ coverage
 dev-dist
 html
 meta*.json
-.claude
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/SKILLS-INDEX.md
+!.claude/settings.json
 packages/excalidraw/.npmrc
 *.superpowers/

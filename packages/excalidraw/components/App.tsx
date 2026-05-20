@@ -10267,7 +10267,7 @@ class App extends React.Component<AppProps, AppState> {
       );
       this.solidPresetElements = elements;
       this.solidPresetGroupId = groupId;
-      this.scene.insertElements(elements);
+      this.scene.insertElementsAtIndex(elements, null);
     } else {
       // Update existing elements' geometry
       geoms.forEach((geom, i) => {

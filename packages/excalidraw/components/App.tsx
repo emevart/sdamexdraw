@@ -368,7 +368,6 @@ import { ActionManager } from "../actions/manager";
 import { actions } from "../actions/register";
 import { getShortcutFromShortcutName } from "../actions/shortcuts";
 import { trackEvent } from "../analytics";
-import { AnimationFrameHandler } from "../animation-frame-handler";
 import { computeStraightenResult, pathLength } from "../straighten";
 import {
   getDefaultAppState,
@@ -799,11 +798,9 @@ class App extends React.Component<AppProps, AppState> {
   previousPointerMoveCoords: { x: number; y: number } | null = null;
   lastViewportPosition = { x: 0, y: 0 };
 
-  animationFrameHandler = new AnimationFrameHandler();
-
-  laserTrails = new LaserTrails(this.animationFrameHandler, this);
-  eraserTrail = new EraserTrail(this.animationFrameHandler, this);
-  lassoTrail = new LassoTrail(this.animationFrameHandler, this);
+  laserTrails = new LaserTrails(this);
+  eraserTrail = new EraserTrail(this);
+  lassoTrail = new LassoTrail(this);
 
   // 3D solid preset: wireframe elements created during drag
   private solidPresetElements: ExcalidrawElement[] = [];
@@ -4842,6 +4839,7 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (collaborators) {
+        this.laserTrails.updateCollabTrails(collaborators);
         this.setState({ collaborators });
       }
     },

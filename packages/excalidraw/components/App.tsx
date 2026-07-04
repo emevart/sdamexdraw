@@ -3734,6 +3734,38 @@ class App extends React.Component<AppProps, AppState> {
       event.preventDefault();
     }
 
+    // Two-finger double-tap undo detection. Only direct (non-stylus) touches
+    // count, and we never arm while a pen is on the surface -- a palm resting
+    // next to the pen must not arm (or spuriously trigger) the undo gesture.
+    // This runs before the single-finger double-tap logic below (that branch
+    // early-returns and would otherwise swallow the first tap of the sequence,
+    // so undo only fired on the third tap).
+    const directTouches: Touch[] = [];
+    for (let i = 0; i < event.touches.length; i++) {
+      const t = event.touches[i];
+      if ((t as Touch & { touchType?: string }).touchType !== "stylus") {
+        directTouches.push(t);
+      }
+    }
+    if (activePenPointerIds.size === 0 && directTouches.length === 2) {
+      // Record two-finger touch start for tap detection on touchend
+      const positions = new Map<number, { x: number; y: number }>();
+      for (const t of directTouches) {
+        positions.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      twoFingerTouchStart = {
+        time: Date.now(),
+        positions,
+        liftedOk: new Map(),
+      };
+      this.setState({
+        selectedElementIds: makeNextSelectedElementIds({}, this.state),
+        activeEmbeddable: null,
+      });
+    } else {
+      twoFingerTouchStart = null;
+    }
+
     if (!didTapTwice) {
       didTapTwice = true;
 
@@ -3779,25 +3811,6 @@ class App extends React.Component<AppProps, AppState> {
       }
       didTapTwice = false;
       clearTimeout(tappedTwiceTimer);
-    }
-
-    if (event.touches.length === 2) {
-      // Record two-finger touch start for tap detection on touchend
-      const positions = new Map<number, { x: number; y: number }>();
-      for (let i = 0; i < event.touches.length; i++) {
-        const t = event.touches[i];
-        positions.set(t.identifier, { x: t.clientX, y: t.clientY });
-      }
-      twoFingerTouchStart = {
-        time: Date.now(),
-        positions,
-        liftedOk: new Map(),
-      };
-
-      this.setState({
-        selectedElementIds: makeNextSelectedElementIds({}, this.state),
-        activeEmbeddable: null,
-      });
     }
   };
 

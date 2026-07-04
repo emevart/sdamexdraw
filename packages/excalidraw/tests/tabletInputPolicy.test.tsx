@@ -6,7 +6,13 @@ import { Excalidraw } from "../index";
 
 import { API } from "./helpers/api";
 import { Pointer } from "./helpers/ui";
-import { act, render, unmountComponent } from "./test-utils";
+import {
+  act,
+  fireEvent,
+  GlobalTestState,
+  render,
+  unmountComponent,
+} from "./test-utils";
 
 // window test handle, same pattern as regressionTests.test.tsx
 const { h } = window;
@@ -187,5 +193,76 @@ describe("tablet input policy: finger is the camera in pen mode", () => {
     mouse.moveTo(150, 150);
     mouse.upAt(150, 150);
     expect(freedrawElements().length).toBe(1);
+  });
+});
+
+// touchType is an iOS-only field on Touch: "direct" for fingers, "stylus" for
+// the Apple Pencil when it arrives through the TouchEvent stream. jsdom does not
+// synthesise it, so we attach it directly to the touch objects we fire.
+const directTouch = (identifier: number, clientX: number, clientY: number) =>
+  ({ identifier, clientX, clientY, touchType: "direct" } as unknown as Touch);
+const stylusTouch = (identifier: number, clientX: number, clientY: number) =>
+  ({ identifier, clientX, clientY, touchType: "stylus" } as unknown as Touch);
+
+const fireTwoFingerTap = (touches: Touch[]) => {
+  const canvas = GlobalTestState.interactiveCanvas;
+  fireEvent.touchStart(canvas, { touches, changedTouches: touches });
+  fireEvent.touchEnd(canvas, { touches: [], changedTouches: touches });
+};
+
+const liveElementCount = () => h.elements.filter((el) => !el.isDeleted).length;
+
+// Draws a rectangle through the real pointer flow so it lands on the undo
+// stack. UI.createElement / UI.clickTool need the desktop toolbar buttons,
+// which do not render in this jsdom harness, so we select the tool via the App
+// API (as the other suites in this file do) and drag with the mouse.
+const mouse = new Pointer("mouse", 30);
+const drawRectangle = () => {
+  act(() => {
+    h.app.setActiveTool({ type: "rectangle" });
+  });
+  mouse.reset();
+  mouse.down(10, 10);
+  mouse.reset();
+  mouse.up(60, 60);
+};
+
+describe("tablet input policy: two-finger double-tap undo hardening", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+  });
+
+  it("two direct-finger double tap undoes", async () => {
+    drawRectangle();
+    expect(liveElementCount()).toBe(1);
+
+    fireTwoFingerTap([directTouch(1, 100, 100), directTouch(2, 160, 100)]);
+    fireTwoFingerTap([directTouch(3, 100, 100), directTouch(4, 160, 100)]);
+
+    expect(liveElementCount()).toBe(0);
+  });
+
+  it("finger + stylus touch does not undo", async () => {
+    drawRectangle();
+    expect(liveElementCount()).toBe(1);
+
+    fireTwoFingerTap([directTouch(1, 100, 100), stylusTouch(2, 160, 100)]);
+    fireTwoFingerTap([directTouch(3, 100, 100), stylusTouch(4, 160, 100)]);
+
+    expect(liveElementCount()).toBe(1);
+  });
+
+  it("two fingers while pen is on the surface do not undo (palm + finger)", async () => {
+    drawRectangle();
+    expect(liveElementCount()).toBe(1);
+    pen.downAt(400, 400);
+
+    fireTwoFingerTap([directTouch(1, 100, 100), directTouch(2, 160, 100)]);
+    fireTwoFingerTap([directTouch(3, 100, 100), directTouch(4, 160, 100)]);
+
+    pen.upAt(400, 400);
+    expect(liveElementCount()).toBe(1);
   });
 });

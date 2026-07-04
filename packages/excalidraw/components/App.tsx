@@ -7151,10 +7151,10 @@ class App extends React.Component<AppProps, AppState> {
       gesture.lastCenter = center;
 
       const distance = getDistance(Array.from(gesture.pointers.values()));
-      const scaleFactor =
-        this.state.activeTool.type === "freedraw" && this.state.penMode
-          ? 1
-          : distance / gesture.initialDistance;
+      // Fingers are always the camera: with palm rejection a gesture can only
+      // be formed by real fingers, so pinch-zoom stays enabled even while a
+      // drawing tool is active in pen mode (tablet input policy, #2536).
+      const scaleFactor = distance / gesture.initialDistance;
 
       const nextZoom = scaleFactor
         ? getNormalizedZoom(initialScale * scaleFactor)
@@ -8219,13 +8219,11 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
 
+    // In pen mode touch input never draws, selects, or places text/images --
+    // fingers are the camera (they normally get intercepted by the pan branch
+    // above; this is defense in depth for paths that skip it).
     const allowOnPointerDown =
-      !this.state.penMode ||
-      event.pointerType !== "touch" ||
-      this.state.activeTool.type === "selection" ||
-      this.state.activeTool.type === "lasso" ||
-      this.state.activeTool.type === "text" ||
-      this.state.activeTool.type === "image";
+      !this.state.penMode || event.pointerType !== "touch";
 
     if (!allowOnPointerDown) {
       return;
@@ -8545,12 +8543,22 @@ class App extends React.Component<AppProps, AppState> {
   public handleCanvasPanUsingWheelOrSpaceDrag = (
     event: React.PointerEvent<HTMLElement> | MouseEvent,
   ): boolean => {
+    // In pen mode a finger is the camera: a single touch contact pans the
+    // canvas instead of drawing/selecting (tablet input policy, #2536). Palm
+    // rejection guarantees no touch reaches here while a pen is on the surface.
+    const isPenModeTouchPan =
+      this.state.penMode &&
+      "pointerType" in event &&
+      event.pointerType === "touch" &&
+      activePenPointerIds.size === 0;
+
     if (
       !(
         gesture.pointers.size <= 1 &&
         (event.button === POINTER_BUTTON.WHEEL ||
           (event.button === POINTER_BUTTON.MAIN && isHoldingSpace) ||
           isHandToolActive(this.state) ||
+          isPenModeTouchPan ||
           (this.state.viewModeEnabled &&
             this.state.activeTool.type !== "laser"))
       )
@@ -8579,8 +8587,24 @@ class App extends React.Component<AppProps, AppState> {
         : /Linux/.test(window.navigator.platform);
 
     setCursor(this.interactiveCanvas, CURSOR_TYPE.GRABBING);
+    // The pointer that started this pan owns it. A second contact (e.g. a
+    // finger arriving to pinch-zoom) must not drive the pan session; the pinch
+    // branch of handleCanvasPointerMove handles that case instead.
+    const panPointerId = "pointerId" in event ? event.pointerId : null;
     let { clientX: lastX, clientY: lastY } = event;
     const onPointerMove = withBatchedUpdatesThrottled((event: PointerEvent) => {
+      if (panPointerId !== null && event.pointerId !== panPointerId) {
+        return;
+      }
+      // While a two-finger gesture is active, the pinch branch owns both
+      // panning and zooming around the gesture center. Yield here but keep the
+      // last coordinates fresh so that one-finger panning resumes without a
+      // jump once the second finger lifts.
+      if (gesture.pointers.size >= 2) {
+        lastX = event.clientX;
+        lastY = event.clientY;
+        return;
+      }
       const deltaX = lastX - event.clientX;
       const deltaY = lastY - event.clientY;
       lastX = event.clientX;
@@ -8626,7 +8650,19 @@ class App extends React.Component<AppProps, AppState> {
       });
     });
     const teardown = withBatchedUpdates(
-      (lastPointerUp = () => {
+      (lastPointerUp = (upEvent?: Event) => {
+        // Only the pointer that started the pan ends it. A second finger
+        // lifting during a pinch must not tear the session down -- one-finger
+        // panning resumes when the pinch ends. A manual cleanup call (or a
+        // blur) passes no matching pointer and always tears down.
+        if (
+          upEvent &&
+          "pointerId" in upEvent &&
+          panPointerId !== null &&
+          (upEvent as PointerEvent).pointerId !== panPointerId
+        ) {
+          return;
+        }
         lastPointerUp = null;
         isPanning = false;
         if (!isHoldingSpace) {

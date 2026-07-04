@@ -25,11 +25,13 @@ const freedrawElements = () =>
 // Selecting the tool via the App API is equivalent to clicking the toolbar
 // button (which is what setActiveTool ultimately backs) but does not depend on
 // the desktop toolbar being laid out in the jsdom render.
-const selectFreedrawTool = () => {
+const selectTool = (type: "freedraw" | "selection") => {
   act(() => {
-    h.app.setActiveTool({ type: "freedraw" });
+    h.app.setActiveTool({ type });
   });
 };
+
+const selectFreedrawTool = () => selectTool("freedraw");
 
 describe("tablet input policy: palm rejection (pen contact makes touch inert)", () => {
   beforeEach(async () => {
@@ -103,5 +105,87 @@ describe("tablet input policy: palm rejection (pen contact makes touch inert)", 
     finger1.upAt(350, 350);
 
     expect(h.state.zoom.value).toBe(zoomBefore);
+  });
+});
+
+describe("tablet input policy: finger is the camera in pen mode", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+    API.setAppState({ penMode: true, penDetected: true });
+  });
+
+  it("single finger pans instead of drawing (freedraw tool active)", async () => {
+    selectFreedrawTool();
+    const scrollXBefore = h.state.scrollX;
+
+    finger1.downAt(200, 200);
+    finger1.moveTo(300, 200);
+    finger1.upAt(300, 200);
+
+    expect(freedrawElements().length).toBe(0);
+    expect(h.state.scrollX).not.toBe(scrollXBefore);
+  });
+
+  it("single finger does not select or drag elements in pen mode", async () => {
+    const rect = API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([rect]);
+    selectTool("selection");
+    const xBefore = rect.x;
+
+    finger1.downAt(150, 150); // on the element
+    finger1.moveTo(250, 150);
+    finger1.upAt(250, 150);
+
+    expect(h.elements[0].x).toBe(xBefore); // panned, not dragged
+    expect(h.state.selectedElementIds[rect.id]).toBeUndefined();
+  });
+
+  it("pinch-zoom works in pen mode with freedraw active (zoom no longer suppressed)", async () => {
+    selectFreedrawTool();
+    const zoomBefore = h.state.zoom.value;
+
+    finger1.downAt(200, 300);
+    finger2.downAt(400, 300);
+    finger1.moveTo(150, 300);
+    finger2.moveTo(450, 300);
+    finger1.upAt(150, 300);
+    finger2.upAt(450, 300);
+
+    expect(h.state.zoom.value).toBeGreaterThan(zoomBefore);
+    expect(freedrawElements().length).toBe(0);
+  });
+
+  it("pan -> second finger joins -> pinch -> finger lifts -> pan continues without crash", async () => {
+    selectFreedrawTool();
+
+    finger1.downAt(200, 200);
+    finger1.moveTo(250, 200); // one-finger pan engaged
+    finger2.downAt(400, 200); // pinch arms
+    finger1.moveTo(150, 200);
+    finger2.moveTo(450, 200); // spread -> zoom
+    const zoomAfterPinch = h.state.zoom.value;
+    finger2.upAt(450, 200); // back to one finger
+    finger1.moveTo(100, 200); // pan continues
+    finger1.upAt(100, 200);
+
+    expect(zoomAfterPinch).not.toBe(1);
+    expect(freedrawElements().length).toBe(0);
+  });
+
+  it("mouse behaviour unchanged: left-drag draws with freedraw even in pen mode", async () => {
+    selectFreedrawTool();
+    const mouse = new Pointer("mouse", 21);
+    mouse.downAt(100, 100);
+    mouse.moveTo(150, 150);
+    mouse.upAt(150, 150);
+    expect(freedrawElements().length).toBe(1);
   });
 });

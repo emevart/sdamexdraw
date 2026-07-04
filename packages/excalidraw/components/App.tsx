@@ -684,6 +684,13 @@ const gesture: Gesture = {
   initialScale: null,
 };
 
+// Pen contacts currently on the surface. While non-empty, touch input is
+// inert (palm rejection): a resting palm must never cancel a pen stroke,
+// join the pinch/pan gesture, or pan the canvas. Palm-first ordering is the
+// root cause of the "canvas drifts under the pen" bug (WebKit #269535,
+// upstream excalidraw#4808).
+const activePenPointerIds = new Set<number>();
+
 class App extends React.Component<AppProps, AppState> {
   canvas: AppClassProperties["canvas"];
   interactiveCanvas: AppClassProperties["interactiveCanvas"] = null;
@@ -3848,6 +3855,7 @@ class App extends React.Component<AppProps, AppState> {
       });
     } else {
       gesture.pointers.clear();
+      activePenPointerIds.clear();
     }
   };
 
@@ -4408,6 +4416,9 @@ class App extends React.Component<AppProps, AppState> {
       this.resetContextMenuTimer();
     }
 
+    if (event.pointerType === "pen") {
+      activePenPointerIds.delete(event.pointerId);
+    }
     gesture.pointers.delete(event.pointerId);
   };
 
@@ -5422,7 +5433,11 @@ class App extends React.Component<AppProps, AppState> {
         }
       }
 
-      if (event.key === KEYS.SPACE && gesture.pointers.size === 0) {
+      if (
+        event.key === KEYS.SPACE &&
+        gesture.pointers.size === 0 &&
+        activePenPointerIds.size === 0
+      ) {
         isHoldingSpace = true;
         setCursor(this.interactiveCanvas, CURSOR_TYPE.GRAB);
         event.preventDefault();
@@ -8013,6 +8028,16 @@ class App extends React.Component<AppProps, AppState> {
       this.setState({ openPopup: null });
     }
 
+    if (event.pointerType === "pen") {
+      activePenPointerIds.add(event.pointerId);
+    } else if (event.pointerType === "touch" && activePenPointerIds.size > 0) {
+      // Palm rejection: while a pen is on the surface, touch contacts are
+      // palm. Ignore them entirely -- they must not cancel the ongoing pen
+      // stroke (the freedraw spike-discard block below), join the gesture,
+      // or start a pan.
+      return;
+    }
+
     this.updateGestureOnPointerDown(event);
 
     // if dragging element is freedraw and another pointerdown event occurs
@@ -8635,6 +8660,18 @@ class App extends React.Component<AppProps, AppState> {
   private updateGestureOnPointerDown(
     event: React.PointerEvent<HTMLElement>,
   ): void {
+    if (event.pointerType === "pen") {
+      // A pen never participates in pinch/pan. Any tracked touch contacts at
+      // this moment are palm that landed first: drop them and disarm the
+      // gesture so the pen starts a stroke instead of feeding a palm+pen
+      // "pinch" that pans the canvas under the pen.
+      gesture.pointers.clear();
+      gesture.lastCenter = null;
+      gesture.initialDistance = null;
+      gesture.initialScale = null;
+      return;
+    }
+
     gesture.pointers.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,

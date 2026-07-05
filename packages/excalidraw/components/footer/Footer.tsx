@@ -37,10 +37,9 @@ const Footer = ({
           <Section heading="canvasActions">
             <Stack.Row gap={2} align="center">
               <MinimapToggle />
-              <ZoomActions
-                renderAction={actionManager.renderAction}
-                zoom={appState.zoom}
-              />
+              {/* zoom больше не приходит пропом: после #11604 ZoomActions
+                  подписывается на него точечно через useAppStateValue */}
+              <ZoomActions renderAction={actionManager.renderAction} />
             </Stack.Row>
           </Section>
         </Stack.Col>

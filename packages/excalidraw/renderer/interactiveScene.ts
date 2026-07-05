@@ -1620,12 +1620,13 @@ const _renderInteractiveScene = ({
   deltaTime,
 }: InteractiveSceneRenderConfig): {
   scrollBars?: ReturnType<typeof getScrollBars>;
-  atLeastOneVisibleElement: boolean;
-  elementsMap: RenderableElementsMap;
   animationState?: typeof animationState;
 } => {
+  // `|| !visibleElements` -- наш гвард, у upstream его нет: без него
+  // рендер падал на неполном кадре. Возвращаемое значение после #11604
+  // сузилось до `{}`.
   if (canvas === null || !visibleElements) {
-    return { atLeastOneVisibleElement: false, elementsMap };
+    return {};
   }
 
   try {
@@ -2209,8 +2210,6 @@ const _renderInteractiveSceneInner = ({
 
   return {
     scrollBars,
-    atLeastOneVisibleElement: visibleElements.length > 0,
-    elementsMap,
     animationState: nextAnimationState,
   };
 };

@@ -350,3 +350,165 @@ describe("tablet input policy: pen-mode static finger tap clears selection (#257
     expect(h.state.selectedElementIds[rect.id]).toBe(true);
   });
 });
+
+describe("tablet input policy: finger drags the selection in pen mode (#2598)", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+    API.setAppState({ penMode: true, penDetected: true });
+  });
+
+  const selectRectangle = () => {
+    const rect = API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([rect]);
+    API.setSelectedElements([rect]);
+    selectTool("selection");
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+    return rect;
+  };
+
+  it("finger starting on the selection drags it instead of panning", async () => {
+    const rect = selectRectangle();
+    const scrollXBefore = h.state.scrollX;
+    const xBefore = h.elements[0].x; // mutateElement mutates in place
+
+    finger1.downAt(150, 150); // inside the selected bbox
+    finger1.moveTo(250, 150);
+    finger1.upAt(250, 150);
+
+    expect(h.elements[0].x).toBeGreaterThan(xBefore); // dragged
+    expect(h.state.scrollX).toBe(scrollXBefore); // no pan
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+  });
+
+  it("finger starting outside the selection still pans and keeps the selection", async () => {
+    const rect = selectRectangle();
+    const xBefore = h.elements[0].x;
+    const scrollXBefore = h.state.scrollX;
+
+    finger1.downAt(400, 400); // empty canvas, outside the selected bbox
+    finger1.moveTo(500, 400);
+    finger1.upAt(500, 400);
+
+    expect(h.elements[0].x).toBe(xBefore);
+    expect(h.state.scrollX).not.toBe(scrollXBefore);
+    expect(h.state.selectedElementIds[rect.id]).toBe(true); // moved past slop -> no tap-deselect
+  });
+
+  it("finger on a NON-selected element still pans (no selection present)", async () => {
+    const rect = API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([rect]);
+    selectTool("selection");
+    const scrollXBefore = h.state.scrollX;
+
+    finger1.downAt(150, 150);
+    finger1.moveTo(250, 150);
+    finger1.upAt(250, 150);
+
+    expect(h.elements[0].x).toBe(rect.x);
+    expect(h.state.scrollX).not.toBe(scrollXBefore);
+  });
+
+  it("pen on the surface keeps touch inert even over the selection", async () => {
+    const rect = selectRectangle();
+    const scrollXBefore = h.state.scrollX;
+
+    pen.downAt(400, 400);
+    finger1.downAt(150, 150); // palm over the selection
+    finger1.moveTo(250, 150);
+    finger1.upAt(250, 150);
+    pen.upAt(400, 400);
+
+    expect(h.elements[0].x).toBe(rect.x); // untouched
+    expect(h.state.scrollX).toBe(scrollXBefore);
+  });
+
+  it("with a drawing tool active the finger over the selection is still the camera", async () => {
+    const rect = API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([rect]);
+    API.setSelectedElements([rect]);
+    selectFreedrawTool();
+    const scrollXBefore = h.state.scrollX;
+
+    finger1.downAt(150, 150);
+    finger1.moveTo(250, 150);
+    finger1.upAt(250, 150);
+
+    expect(h.elements[0].x).toBe(rect.x);
+    expect(freedrawElements().length).toBe(0); // did not draw
+    expect(h.state.scrollX).not.toBe(scrollXBefore); // panned
+  });
+
+  it("static finger tap on the selection keeps it selected", async () => {
+    const rect = selectRectangle();
+
+    finger1.downAt(150, 150);
+    finger1.upAt(150, 150);
+
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+  });
+});
+
+describe("tablet input policy: auto pen mode (#2562)", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+  });
+
+  it("first pen contact on the canvas enables pen mode", async () => {
+    expect(h.state.penMode).toBe(false);
+    expect(h.state.penDetected).toBe(false);
+
+    pen.downAt(100, 100);
+    pen.upAt(100, 100);
+
+    expect(h.state.penDetected).toBe(true);
+    expect(h.state.penMode).toBe(true);
+  });
+
+  it("a finger never enables pen mode", async () => {
+    finger1.downAt(100, 100);
+    finger1.moveTo(150, 150);
+    finger1.upAt(150, 150);
+
+    expect(h.state.penMode).toBe(false);
+    expect(h.state.penDetected).toBe(false);
+  });
+
+  it("after an explicit toggle-off the pen does not re-enable pen mode", async () => {
+    pen.downAt(100, 100);
+    pen.upAt(100, 100);
+    expect(h.state.penMode).toBe(true);
+
+    act(() => {
+      h.app.togglePenMode(false);
+    });
+    expect(h.state.penMode).toBe(false);
+
+    pen.downAt(200, 200);
+    pen.upAt(200, 200);
+
+    expect(h.state.penMode).toBe(false); // exit is only ever manual
+    expect(h.state.penDetected).toBe(true);
+  });
+});

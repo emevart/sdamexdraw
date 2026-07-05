@@ -8255,9 +8255,13 @@ class App extends React.Component<AppProps, AppState> {
 
     // In pen mode touch input never draws, selects, or places text/images --
     // fingers are the camera (they normally get intercepted by the pan branch
-    // above; this is defense in depth for paths that skip it).
+    // above; this is defense in depth for paths that skip it). Exception
+    // (#2598): a finger on the current selection falls through to the
+    // selection tool's drag path so the copy can be moved by hand.
     const allowOnPointerDown =
-      !this.state.penMode || event.pointerType !== "touch";
+      !this.state.penMode ||
+      event.pointerType !== "touch" ||
+      this.isPenModeFingerOnSelection(event);
 
     if (!allowOnPointerDown) {
       return;
@@ -8584,7 +8588,9 @@ class App extends React.Component<AppProps, AppState> {
       this.state.penMode &&
       "pointerType" in event &&
       event.pointerType === "touch" &&
-      activePenPointerIds.size === 0;
+      activePenPointerIds.size === 0 &&
+      // #2598: a finger landing on the selection drags it instead of panning.
+      !this.isPenModeFingerOnSelection(event);
 
     if (
       !(
@@ -9412,6 +9418,45 @@ class App extends React.Component<AppProps, AppState> {
   private isASelectedElement(hitElement: ExcalidrawElement | null): boolean {
     return hitElement != null && this.state.selectedElementIds[hitElement.id];
   }
+
+  // #2598: in pen mode a single finger normally pans the canvas, but a finger
+  // landing on the current selection (selection-like tool, no pen on screen)
+  // should drag the selection instead -- the "duplicate, then move the copy
+  // with a finger" convention (Procreate/GoodNotes). Everything else about the
+  // tablet input policy is unchanged: fingers elsewhere pan, palm rejection
+  // still wins (pen contacts make touch inert before this is consulted).
+  private isPenModeFingerOnSelection = (event: {
+    clientX: number;
+    clientY: number;
+  }): boolean => {
+    if (!isSelectionLikeTool(this.state.activeTool.type)) {
+      return false;
+    }
+    const selectedElements = this.scene.getSelectedElements(this.state);
+    if (!selectedElements.length) {
+      return false;
+    }
+    const { x, y } = viewportCoordsToSceneCoords(
+      { clientX: event.clientX, clientY: event.clientY },
+      this.state,
+    );
+    // Same tolerances as isHittingCommonBoundingBoxOfSelectedElements, but for
+    // ANY selection size: a copied handwriting is many thin freedraw strokes,
+    // a fingertip cannot be expected to land on the ink itself.
+    const threshold = Math.max(
+      DEFAULT_COLLISION_THRESHOLD / this.state.zoom.value,
+      1,
+    );
+    const boundsPadding =
+      (DEFAULT_TRANSFORM_HANDLE_SPACING * 2) / this.state.zoom.value;
+    const [x1, y1, x2, y2] = getCommonBounds(selectedElements);
+    return (
+      x > x1 - boundsPadding - threshold &&
+      x < x2 + boundsPadding + threshold &&
+      y > y1 - boundsPadding - threshold &&
+      y < y2 + boundsPadding + threshold
+    );
+  };
 
   private isHittingCommonBoundingBoxOfSelectedElements(
     point: Readonly<{ x: number; y: number }>,
@@ -12684,6 +12729,10 @@ class App extends React.Component<AppProps, AppState> {
         !pointerDownState.drag.hasOccurred &&
         // not resized
         !this.state.isResizing &&
+        // #2598: a pen-mode finger tap must NOT deselect through this
+        // bbox-only path -- finger deselect stays tap-on-empty-canvas only
+        // (the 0.28.1 convention); mouse/pen behaviour is unchanged.
+        !(this.state.penMode && childEvent.pointerType === "touch") &&
         // only hitting the bounding box of the previous hit element
         ((hitElement &&
           hitElementBoundingBoxOnly(

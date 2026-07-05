@@ -42,7 +42,12 @@ export const PenModeButton = (props: PenModeIconProps) => {
         checked={props.checked}
         aria-label={props.title}
       />
-      <div className="ToolIcon__icon">{PenModeIcon}</div>
+      <div className="ToolIcon__icon">
+        {PenModeIcon}
+        {/* #2562: visible "stylus mode is on" status -- the checked background
+            alone is easy to miss on a tablet in bright light */}
+        {props.checked && <div className="ToolIcon__penModeIndicator" />}
+      </div>
     </label>
   );
 

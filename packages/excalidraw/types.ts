@@ -1040,6 +1040,11 @@ export interface ExcalidrawImperativeAPI {
   ) => UnsubscribeCallback;
   onStateChange: InstanceType<typeof App>["onStateChange"];
   onEvent: InstanceType<typeof App>["onEvent"];
+  /**
+   * sdamex: externally set the pending-erasure preview set (scratch-to-erase).
+   * Elements in the set render at the eraser preview opacity. Pass [] to clear.
+   */
+  setElementsPendingErasure: (elementIds: readonly string[]) => void;
 }
 
 export type FrameNameBounds = {

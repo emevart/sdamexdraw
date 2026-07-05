@@ -895,6 +895,13 @@ class App extends React.Component<AppProps, AppState> {
       onUserFollow: (cb) => this.onUserFollowEmitter.on(cb),
       onStateChange: this.onStateChange,
       onEvent: this.onEvent,
+      // sdamex: external pending-erasure preview (scratch-to-erase). Reuses the
+      // eraser highlight path: elements render at eraser preview opacity until
+      // the set is replaced. Pass [] to clear.
+      setElementsPendingErasure: (elementIds: readonly string[]) => {
+        this.elementsPendingErasure = new Set(elementIds);
+        this.triggerRender();
+      },
     };
     return api;
   }

@@ -266,3 +266,87 @@ describe("tablet input policy: two-finger double-tap undo hardening", () => {
     expect(liveElementCount()).toBe(1);
   });
 });
+
+describe("tablet input policy: pen-mode static finger tap clears selection (#2571)", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+    API.setAppState({ penMode: true, penDetected: true });
+  });
+
+  const selectRectangle = () => {
+    const rect = API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([rect]);
+    API.setSelectedElements([rect]);
+    selectTool("selection");
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+    return rect;
+  };
+
+  it("static single-finger tap on empty canvas clears the selection", async () => {
+    const rect = selectRectangle();
+
+    finger1.downAt(400, 400); // empty canvas, far from the element
+    finger1.upAt(400, 400);
+
+    expect(h.state.selectedElementIds[rect.id]).toBeUndefined();
+    expect(Object.keys(h.state.selectedElementIds).length).toBe(0);
+  });
+
+  it("finger that pans past the tap slop keeps the selection", async () => {
+    const rect = selectRectangle();
+
+    finger1.downAt(400, 400);
+    finger1.moveTo(460, 400); // 60px > tap slop -> a real pan, not a tap
+    finger1.upAt(460, 400);
+
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+  });
+
+  it("finger stays inert while a pen is on the surface, so it cannot deselect (palm rejection)", async () => {
+    selectRectangle();
+    const scrollXBefore = h.state.scrollX;
+
+    // Pen rests on the selected element -> touch is inert (palm rejection). A
+    // finger contact (even a moving one that would otherwise pan) must be
+    // ignored entirely.
+    pen.downAt(150, 150);
+    finger1.downAt(400, 400);
+    finger1.moveTo(300, 400); // a live finger would pan here
+    finger1.upAt(300, 400);
+
+    // The finger never drove the camera: the tap-to-deselect logic lives inside
+    // the pen-mode finger-pan session, which is never created while a pen is on
+    // the surface, so it can never clear the selection here.
+    expect(h.state.scrollX).toBe(scrollXBefore);
+
+    pen.upAt(150, 150); // cleanup
+  });
+
+  it("two-finger tap does not clear the selection via the tap-to-deselect path", async () => {
+    const rect = selectRectangle();
+
+    finger1.downAt(300, 300);
+    finger2.downAt(360, 300); // second contact cancels the tap candidate
+    finger1.upAt(300, 300);
+    finger2.upAt(360, 300);
+
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+  });
+
+  it("static single-finger tap on an element keeps the selection (not empty canvas)", async () => {
+    const rect = selectRectangle();
+
+    finger1.downAt(150, 150); // on the element (scene 150,150 is inside 100..200)
+    finger1.upAt(150, 150);
+
+    expect(h.state.selectedElementIds[rect.id]).toBe(true);
+  });
+});

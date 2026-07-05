@@ -622,6 +622,20 @@ let twoFingerTouchStart: {
   liftedOk: Map<number, boolean>; // identifier → true if lifted within distance
 } | null = null;
 let lastTwoFingerTapTime = 0;
+// Pen-mode single-finger static tap on empty canvas clears the selection.
+// In pen mode a finger is the camera (#2536), so a finger that neither travels
+// past the tap slop nor gains a second contact produces a zero-distance pan
+// that does nothing. Reuse that dead gesture as the touch-editor
+// "tap empty canvas to deselect" convention (Procreate/GoodNotes) so a finger
+// can dismiss a selection + the context bar the pen left behind. See #2571.
+const PEN_MODE_TAP_SLOP_PX = 10;
+const PEN_MODE_TAP_MAX_MS = 300;
+let penModeTapCandidate: {
+  pointerId: number;
+  x: number;
+  y: number;
+  time: number;
+} | null = null;
 // Three independent settings sets for pencil, highlighter, and shapes
 type ToolSettings = {
   strokeWidth: number;
@@ -8580,6 +8594,21 @@ class App extends React.Component<AppProps, AppState> {
     }
     isPanning = true;
 
+    // #2571: while this pen-mode finger pan is live, remember the contact as a
+    // tap-to-deselect candidate. It is disarmed if the finger travels past the
+    // slop (onPointerMove below) or a second finger arrives
+    // (updateGestureOnPointerDown); if it survives to pointerup over empty
+    // canvas the teardown clears the selection.
+    penModeTapCandidate =
+      isPenModeTouchPan && "pointerId" in event
+        ? {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            time: Date.now(),
+          }
+        : null;
+
     // due to event.preventDefault below, container wouldn't get focus
     // automatically
     this.focusContainer();
@@ -8608,6 +8637,18 @@ class App extends React.Component<AppProps, AppState> {
     const onPointerMove = withBatchedUpdatesThrottled((event: PointerEvent) => {
       if (panPointerId !== null && event.pointerId !== panPointerId) {
         return;
+      }
+      // #2571: a finger that travels past the tap slop is a real pan, not a
+      // static tap -- disarm the tap-to-deselect candidate.
+      if (
+        penModeTapCandidate &&
+        penModeTapCandidate.pointerId === event.pointerId &&
+        Math.hypot(
+          event.clientX - penModeTapCandidate.x,
+          event.clientY - penModeTapCandidate.y,
+        ) > PEN_MODE_TAP_SLOP_PX
+      ) {
+        penModeTapCandidate = null;
       }
       // While a two-finger gesture is active, the pinch branch owns both
       // panning and zooming around the gesture center. Yield here but keep the
@@ -8695,7 +8736,46 @@ class App extends React.Component<AppProps, AppState> {
         window.removeEventListener(EVENT.POINTER_MOVE, onPointerMove);
         window.removeEventListener(EVENT.POINTER_UP, teardown);
         window.removeEventListener(EVENT.BLUR, teardown);
+        // flush first so any pending move (which would disarm the candidate)
+        // is applied before we decide whether this was a static tap.
         onPointerMove.flush();
+
+        // #2571: pen-mode single-finger static tap on empty canvas clears the
+        // selection. The candidate only survives here if the finger stayed
+        // within the tap slop and never gained a second contact; require a
+        // genuine, quick pointerup from that same finger with no pen on the
+        // surface, an empty hit-test, and something to actually deselect.
+        const tap = penModeTapCandidate;
+        penModeTapCandidate = null;
+        if (
+          tap &&
+          upEvent &&
+          "pointerId" in upEvent &&
+          (upEvent as PointerEvent).pointerId === tap.pointerId &&
+          activePenPointerIds.size === 0 &&
+          Date.now() - tap.time <= PEN_MODE_TAP_MAX_MS &&
+          (Object.keys(this.state.selectedElementIds).length > 0 ||
+            this.state.activeLockedId != null)
+        ) {
+          const sceneCoords = viewportCoordsToSceneCoords(
+            { clientX: tap.x, clientY: tap.y },
+            this.state,
+          );
+          const hitElement = this.getElementAtPosition(
+            sceneCoords.x,
+            sceneCoords.y,
+            { includeLockedElements: true },
+          );
+          if (!hitElement) {
+            // reuse the shared deselect helper (selectedElementIds/
+            // selectedGroupIds/editingGroupId/activeEmbeddable) and clear the
+            // locked-element highlight the same way an empty-canvas click does.
+            this.deselectElements();
+            if (this.state.activeLockedId != null) {
+              this.setState({ activeLockedId: null });
+            }
+          }
+        }
       }),
     );
     window.addEventListener(EVENT.BLUR, teardown);
@@ -8725,6 +8805,13 @@ class App extends React.Component<AppProps, AppState> {
       x: event.clientX,
       y: event.clientY,
     });
+
+    // #2571: a second contact means this is a pinch / two-finger gesture (or a
+    // two-finger undo tap), not a single-finger tap -- disarm the pen-mode
+    // tap-to-deselect candidate so it never fires on pointerup.
+    if (gesture.pointers.size >= 2) {
+      penModeTapCandidate = null;
+    }
 
     if (gesture.pointers.size === 2) {
       gesture.lastCenter = getCenter(gesture.pointers);

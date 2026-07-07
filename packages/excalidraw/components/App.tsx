@@ -298,6 +298,7 @@ import type {
   ExcalidrawEmbeddableElement,
   Ordered,
   MagicGenerationData,
+  Arrowhead,
   ExcalidrawArrowElement,
   ExcalidrawElbowArrowElement,
   SceneElementsMap,
@@ -795,6 +796,9 @@ class App extends React.Component<AppProps, AppState> {
   /** current frame pointer cords */
   lastPointerMoveCoords: { x: number; y: number } | null = null;
   private lastCompletedCanvasClicks: { x: number; y: number }[] = [];
+  /** arrowheads removed via endpoint double-click toggle, so a subsequent
+   * toggle can restore the original arrowhead (keyed by `elementId:side`) */
+  private removedArrowheads = new Map<string, Arrowhead>();
   /** previous frame pointer coords */
   previousPointerMoveCoords: { x: number; y: number } | null = null;
   lastViewportPosition = { x: 0, y: 0 };
@@ -6674,6 +6678,49 @@ class App extends React.Component<AppProps, AppState> {
     );
   };
 
+  /**
+   * Toggles the arrowhead at the given endpoint between no arrowhead and the
+   * arrowhead it had before the last toggle (falling back to the current
+   * default arrowhead).
+   */
+  private toggleArrowheadAtEndpoint = (
+    element: ExcalidrawArrowElement,
+    side: "start" | "end",
+  ) => {
+    const currentArrowhead =
+      side === "start" ? element.startArrowhead : element.endArrowhead;
+
+    this.store.scheduleCapture();
+
+    let arrowheadUpdate:
+      | { startArrowhead: Arrowhead | null }
+      | { endArrowhead: Arrowhead | null };
+
+    if (currentArrowhead) {
+      this.removedArrowheads.set(`${element.id}:${side}`, currentArrowhead);
+      arrowheadUpdate =
+        side === "start" ? { startArrowhead: null } : { endArrowhead: null };
+    } else {
+      const arrowhead =
+        this.removedArrowheads.get(`${element.id}:${side}`) ??
+        (side === "start"
+          ? this.state.currentItemStartArrowhead
+          : this.state.currentItemEndArrowhead) ??
+        "arrow";
+      arrowheadUpdate =
+        side === "start"
+          ? { startArrowhead: arrowhead }
+          : { endArrowhead: arrowhead };
+    }
+
+    this.scene.mapElements((_element) => {
+      if (_element.id === element.id && isArrowElement(_element)) {
+        return newElementWith(_element, arrowheadUpdate);
+      }
+      return _element;
+    });
+  };
+
   private handleCanvasDoubleClick = (
     event: Pick<
       React.MouseEvent<HTMLCanvasElement>,
@@ -6712,6 +6759,31 @@ class App extends React.Component<AppProps, AppState> {
     if (selectedElements.length === 1 && isLinearElement(selectedElements[0])) {
       const selectedLinearElement: ExcalidrawLinearElement =
         selectedElements[0];
+
+      if (
+        !event[KEYS.CTRL_OR_CMD] &&
+        isArrowElement(selectedLinearElement) &&
+        this.state.selectedLinearElement?.elementId === selectedLinearElement.id
+      ) {
+        const clickedPointIndex = LinearElementEditor.getPointIndexUnderCursor(
+          selectedLinearElement,
+          this.scene.getNonDeletedElementsMap(),
+          this.state.zoom,
+          sceneX,
+          sceneY,
+        );
+        if (
+          clickedPointIndex === 0 ||
+          clickedPointIndex === selectedLinearElement.points.length - 1
+        ) {
+          this.toggleArrowheadAtEndpoint(
+            selectedLinearElement,
+            clickedPointIndex === 0 ? "start" : "end",
+          );
+          return;
+        }
+      }
+
       if (
         ((event[KEYS.CTRL_OR_CMD] && isSimpleArrow(selectedLinearElement)) ||
           isLineElement(selectedLinearElement)) &&

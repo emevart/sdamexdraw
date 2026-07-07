@@ -28,6 +28,7 @@ import type {
   ExcalidrawElbowArrowElement,
   ExcalidrawFreeDrawElement,
   ExcalidrawLinearElement,
+  NonDeleted,
 } from "../src/types";
 import type { TransformHandleDirection } from "../src/transformHandles";
 unmountComponent();
@@ -346,7 +347,7 @@ describe("line element", () => {
   it("resizes", async () => {
     UI.createElement("line", { points });
 
-    const element = h.elements[0] as ExcalidrawLinearElement;
+    const element = h.elements[0] as NonDeleted<ExcalidrawLinearElement>;
 
     const {
       x: prevX,
@@ -383,7 +384,7 @@ describe("line element", () => {
 
   it("flips while resizing", async () => {
     UI.createElement("line", { points });
-    const element = h.elements[0] as ExcalidrawLinearElement;
+    const element = h.elements[0] as NonDeleted<ExcalidrawLinearElement>;
 
     const {
       width: prevWidth,
@@ -437,7 +438,7 @@ describe("line element", () => {
         pointFrom(-338.05644048727373, -180.4761618151104),
       ],
     });
-    const element = h.elements[0] as ExcalidrawLinearElement;
+    const element = h.elements[0] as NonDeleted<ExcalidrawLinearElement>;
 
     const {
       x: prevX,

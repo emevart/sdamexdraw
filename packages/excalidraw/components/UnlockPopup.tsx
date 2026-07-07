@@ -1,11 +1,14 @@
 import {
   getCommonBounds,
   getElementsInGroup,
+  isNonDeletedElement,
   selectGroupsFromGivenElements,
 } from "@excalidraw/element";
 import { sceneCoordsToViewportCoords } from "@excalidraw/common";
 
 import { flushSync } from "react-dom";
+
+import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 
 import { actionToggleElementLock } from "../actions";
 import { t } from "../i18n";
@@ -25,11 +28,18 @@ const UnlockPopup = ({
   app: App;
   activeLockedId: NonNullable<AppState["activeLockedId"]>;
 }) => {
-  const element = app.scene.getElement(activeLockedId);
+  const candidateElement = app.scene.getElement(activeLockedId);
+  const element: NonDeletedExcalidrawElement | null =
+    candidateElement && isNonDeletedElement(candidateElement)
+      ? candidateElement
+      : null;
 
   const elements = element
     ? [element]
-    : getElementsInGroup(app.scene.getNonDeletedElementsMap(), activeLockedId);
+    : getElementsInGroup<NonDeletedExcalidrawElement>(
+        app.scene.getNonDeletedElementsMap(),
+        activeLockedId,
+      );
 
   if (elements.length === 0) {
     return null;

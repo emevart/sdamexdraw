@@ -72,11 +72,13 @@ import type {
   ExcalidrawLinearElement,
   ExcalidrawTextElement,
   FontFamilyValues,
+  NonDeleted,
+  NonDeletedExcalidrawElement,
   TextAlign,
   VerticalAlign,
 } from "@excalidraw/element/types";
 
-import type { Scene } from "@excalidraw/element";
+import type { ElementUpdate, Scene } from "@excalidraw/element";
 
 import type { CaptureUpdateActionType } from "@excalidraw/element";
 
@@ -165,7 +167,7 @@ const getStylesPanelInfo = (app: AppClassProperties) => {
 export const changeProperty = (
   elements: readonly ExcalidrawElement[],
   appState: AppState,
-  callback: (element: ExcalidrawElement) => ExcalidrawElement,
+  callback: (element: NonDeletedExcalidrawElement) => ExcalidrawElement,
   includeBoundText = false,
 ) => {
   const selectedElementIds = arrayToMap(
@@ -179,7 +181,8 @@ export const changeProperty = (
       selectedElementIds.get(element.id) ||
       element.id === appState.editingTextElement?.id
     ) {
-      return callback(element);
+      // selected & editing elements are non-deleted
+      return callback(element as NonDeletedExcalidrawElement);
     }
     return element;
   });
@@ -913,7 +916,7 @@ export const actionChangeFontFamily = register<{
           if (cachedElement) {
             const newElement = newElementWith(element, {
               ...cachedElement,
-            });
+            } as ElementUpdate<NonDeletedExcalidrawElement>);
 
             return newElement;
           }
@@ -1915,13 +1918,13 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
             endBinding,
             fixedSegments: null,
           }),
-        };
+        } as typeof newElement;
       } else {
         const elementsMap = app.scene.getNonDeletedElementsMap();
         if (newElement.startBinding) {
           const startElement = elementsMap.get(
             newElement.startBinding.elementId,
-          ) as ExcalidrawBindableElement;
+          ) as NonDeleted<ExcalidrawBindableElement>;
           if (startElement) {
             bindBindingElement(
               newElement,
@@ -1935,7 +1938,7 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
         if (newElement.endBinding) {
           const endElement = elementsMap.get(
             newElement.endBinding.elementId,
-          ) as ExcalidrawBindableElement;
+          ) as NonDeleted<ExcalidrawBindableElement>;
           if (endElement) {
             bindBindingElement(
               newElement,
@@ -1963,7 +1966,7 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
       const selected = newElements.find((el) => el.id === selectedId);
       if (selected) {
         newState.selectedLinearElement = new LinearElementEditor(
-          selected as ExcalidrawLinearElement,
+          selected as NonDeleted<ExcalidrawLinearElement>,
           arrayToMap(elements),
         );
       }

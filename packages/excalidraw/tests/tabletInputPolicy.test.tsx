@@ -468,6 +468,194 @@ describe("tablet input policy: finger drags the selection in pen mode (#2598)", 
   });
 });
 
+describe("tablet input policy: finger tap on a locked element surfaces unlock (#2632)", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+    API.setAppState({ penMode: true, penDetected: true });
+  });
+
+  // Taps in this suite land on the stroke (x=100 edge): like on desktop, a
+  // transparent rectangle interior is not a hit for getElementAtPosition.
+  const createLockedRectangle = () =>
+    API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      locked: true,
+    });
+
+  it("static finger tap on a locked element sets activeLockedId (freedraw active)", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    finger1.downAt(100, 150);
+    finger1.upAt(100, 150);
+
+    expect(h.state.activeLockedId).toBe(rect.id);
+    expect(freedrawElements().length).toBe(0); // the finger never draws
+  });
+
+  it("static finger tap on a locked element clears the selection and sets activeLockedId (selection tool)", async () => {
+    const locked = createLockedRectangle();
+    const other = API.createElement({
+      type: "rectangle",
+      x: 400,
+      y: 400,
+      width: 50,
+      height: 50,
+    });
+    API.setElements([locked, other]);
+    API.setSelectedElements([other]);
+    selectTool("selection");
+
+    finger1.downAt(100, 150); // on the locked element, outside the selection
+    finger1.upAt(100, 150);
+
+    expect(h.state.activeLockedId).toBe(locked.id);
+    expect(h.state.selectedElementIds[other.id]).toBeUndefined();
+  });
+
+  it("grouped locked element resolves activeLockedId to the outermost group id", async () => {
+    const rect = API.createElement({
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      locked: true,
+      groupIds: ["inner-group", "outer-group"],
+    });
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    finger1.downAt(100, 150);
+    finger1.upAt(100, 150);
+
+    expect(h.state.activeLockedId).toBe("outer-group");
+  });
+
+  it("sub-slop jitter still surfaces the pill (a real fingertip never lands perfectly still)", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    finger1.downAt(100, 150);
+    finger1.moveTo(105, 150); // 5px < PEN_MODE_TAP_SLOP_PX -> still a tap
+    finger1.upAt(105, 150);
+
+    expect(h.state.activeLockedId).toBe(rect.id);
+  });
+
+  it("sub-slop wiggle in the outer hit band: hit-test follows the finger, not the down-point", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    // Down lands 12px right of the stroke centerline -- inside the ~17px hit
+    // band. The 9px outward wiggle pans the camera; hit-testing the DOWN
+    // coords against the panned camera would resolve ~21px off the stroke
+    // and miss (the pointerup coords resolve back to the same scene spot).
+    finger1.downAt(112, 150);
+    finger1.moveTo(103, 150); // 9px < slop -> candidate survives, camera pans
+    finger1.upAt(103, 150);
+
+    expect(h.state.activeLockedId).toBe(rect.id);
+  });
+
+  it("a tap that travels just past the slop is a pan, not a tap on the locked element", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    finger1.downAt(100, 150);
+    finger1.moveTo(112, 150); // 12px > PEN_MODE_TAP_SLOP_PX -> disarmed
+    finger1.upAt(112, 150);
+
+    expect(h.state.activeLockedId).toBe(null);
+  });
+
+  it("finger that drags from a locked element pans the camera and does not set activeLockedId", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+    const scrollXBefore = h.state.scrollX;
+
+    finger1.downAt(100, 150);
+    finger1.moveTo(250, 150); // past the tap slop -> a real pan
+    finger1.upAt(250, 150);
+
+    expect(h.state.activeLockedId).toBe(null);
+    expect(h.state.scrollX).not.toBe(scrollXBefore);
+  });
+
+  it("touch stays inert over a locked element while a pen is on the surface (palm rejection)", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    pen.downAt(400, 400);
+    finger1.downAt(100, 150);
+    finger1.upAt(100, 150);
+    pen.upAt(400, 400);
+
+    expect(h.state.activeLockedId).toBe(null);
+  });
+
+  it("tap on empty canvas clears activeLockedId (pill goes away)", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    selectFreedrawTool();
+
+    finger1.downAt(100, 150);
+    finger1.upAt(100, 150);
+    expect(h.state.activeLockedId).toBe(rect.id);
+
+    finger1.downAt(400, 400);
+    finger1.upAt(400, 400);
+
+    expect(h.state.activeLockedId).toBe(null);
+  });
+
+  it("tap on an unlocked element clears a stale activeLockedId without selecting", async () => {
+    const locked = createLockedRectangle();
+    const plain = API.createElement({
+      type: "rectangle",
+      x: 400,
+      y: 400,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([locked, plain]);
+    selectFreedrawTool();
+
+    finger1.downAt(100, 150);
+    finger1.upAt(100, 150);
+    expect(h.state.activeLockedId).toBe(locked.id);
+
+    finger1.downAt(400, 450); // on the unlocked element
+    finger1.upAt(400, 450);
+
+    expect(h.state.activeLockedId).toBe(null);
+    expect(h.state.selectedElementIds[plain.id]).toBeUndefined();
+  });
+
+  it("view mode: tap on a locked element does not surface the unlock affordance", async () => {
+    const rect = createLockedRectangle();
+    API.setElements([rect]);
+    API.setAppState({ viewModeEnabled: true });
+
+    finger1.downAt(100, 150);
+    finger1.upAt(100, 150);
+
+    expect(h.state.activeLockedId).toBe(null);
+  });
+});
+
 describe("tablet input policy: auto pen mode (#2562)", () => {
   beforeEach(async () => {
     unmountComponent();

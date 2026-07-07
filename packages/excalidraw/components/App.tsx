@@ -8753,11 +8753,11 @@ class App extends React.Component<AppProps, AppState> {
         // is applied before we decide whether this was a static tap.
         onPointerMove.flush();
 
-        // #2571: pen-mode single-finger static tap on empty canvas clears the
-        // selection. The candidate only survives here if the finger stayed
-        // within the tap slop and never gained a second contact; require a
-        // genuine, quick pointerup from that same finger with no pen on the
-        // surface, an empty hit-test, and something to actually deselect.
+        // #2571 / #2632: a pen-mode single-finger static tap acts on what it
+        // landed on instead of the camera. The candidate only survives here if
+        // the finger stayed within the tap slop and never gained a second
+        // contact; require a genuine, quick pointerup from that same finger
+        // with no pen on the surface.
         const tap = penModeTapCandidate;
         penModeTapCandidate = null;
         if (
@@ -8766,12 +8766,19 @@ class App extends React.Component<AppProps, AppState> {
           "pointerId" in upEvent &&
           (upEvent as PointerEvent).pointerId === tap.pointerId &&
           activePenPointerIds.size === 0 &&
-          Date.now() - tap.time <= PEN_MODE_TAP_MAX_MS &&
-          (Object.keys(this.state.selectedElementIds).length > 0 ||
-            this.state.activeLockedId != null)
+          Date.now() - tap.time <= PEN_MODE_TAP_MAX_MS
         ) {
+          // Hit-test with the pointerup coords, not tap.x/tap.y: a sub-slop
+          // wiggle keeps the candidate alive but still pans the camera, so the
+          // pointerDOWN coords would resolve to a drifted scene point. By the
+          // pan invariant the release coords point at the same scene spot the
+          // finger has been on all along (desktop uses up-coords too).
+          const upPointerEvent = upEvent as PointerEvent;
           const sceneCoords = viewportCoordsToSceneCoords(
-            { clientX: tap.x, clientY: tap.y },
+            {
+              clientX: upPointerEvent.clientX,
+              clientY: upPointerEvent.clientY,
+            },
             this.state,
           );
           const hitElement = this.getElementAtPosition(
@@ -8779,14 +8786,38 @@ class App extends React.Component<AppProps, AppState> {
             sceneCoords.y,
             { includeLockedElements: true },
           );
-          if (!hitElement) {
-            // reuse the shared deselect helper (selectedElementIds/
-            // selectedGroupIds/editingGroupId/activeEmbeddable) and clear the
-            // locked-element highlight the same way an empty-canvas click does.
+          if (hitElement?.locked && !this.state.viewModeEnabled) {
+            // #2632: a locked element cannot be selected, so without this the
+            // camera swallows the tap and long-press (native context menu)
+            // stays the only unlock path on tablets. Mirror the desktop
+            // pointerup: deselect, then group-aware activeLockedId, which
+            // surfaces the unlock affordance.
+            this.deselectElements();
+            this.setState({
+              activeLockedId:
+                hitElement.groupIds.length > 0
+                  ? hitElement.groupIds.at(-1) || ""
+                  : hitElement.id,
+            });
+          } else if (
+            !hitElement &&
+            (Object.keys(this.state.selectedElementIds).length > 0 ||
+              this.state.activeLockedId != null)
+          ) {
+            // #2571: tap on empty canvas deselects. Reuse the shared deselect
+            // helper (selectedElementIds/selectedGroupIds/editingGroupId/
+            // activeEmbeddable) and clear the locked-element highlight the
+            // same way an empty-canvas click does.
             this.deselectElements();
             if (this.state.activeLockedId != null) {
               this.setState({ activeLockedId: null });
             }
+          } else if (hitElement && this.state.activeLockedId != null) {
+            // The finger still never selects, but a tap on another (unlocked)
+            // element must not leave a stale unlock affordance behind --
+            // desktop clears activeLockedId on any pointerup off the locked
+            // element.
+            this.setState({ activeLockedId: null });
           }
         }
       }),

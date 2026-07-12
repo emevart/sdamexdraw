@@ -778,6 +778,10 @@ class App extends React.Component<AppProps, AppState> {
   bindModeHandler: ReturnType<typeof setTimeout> | null = null;
 
   hitLinkElement?: NonDeletedExcalidrawElement;
+  // #881: set when a right-button drag actually panned the canvas — the
+  // contextmenu event that follows the release must be swallowed instead of
+  // opening the menu.
+  private rightClickPanned = false;
   lastPointerDownEvent: React.PointerEvent<HTMLElement> | null = null;
   lastPointerUpEvent: React.PointerEvent<HTMLElement> | PointerEvent | null =
     null;
@@ -8595,11 +8599,20 @@ class App extends React.Component<AppProps, AppState> {
       // #2598: a finger landing on the selection drags it instead of panning.
       !this.isPenModeFingerOnSelection(event);
 
+    // #881: right-drag = pan, right-click = context menu. Only a real mouse —
+    // the pen barrel (secondary) button is reserved for forcing the context
+    // menu open (see handleCanvasContextMenu).
+    const isRightButtonPan =
+      "pointerType" in event &&
+      event.pointerType === "mouse" &&
+      event.button === POINTER_BUTTON.SECONDARY;
+
     if (
       !(
         gesture.pointers.size <= 1 &&
         (event.button === POINTER_BUTTON.WHEEL ||
           (event.button === POINTER_BUTTON.MAIN && isHoldingSpace) ||
+          isRightButtonPan ||
           isHandToolActive(this.state) ||
           isPenModeTouchPan ||
           (this.state.viewModeEnabled &&
@@ -8608,7 +8621,16 @@ class App extends React.Component<AppProps, AppState> {
     ) {
       return false;
     }
-    isPanning = true;
+    // #881: the right button only ARMS a pan — no side effects (cursor,
+    // isPanning, preventDefault) until the drag threshold is crossed in
+    // onPointerMove below, so a plain right-click stays a pure context-menu
+    // gesture. All other triggers pan immediately, as before.
+    this.rightClickPanned = false;
+    const armX = event.clientX;
+    const armY = event.clientY;
+    if (!isRightButtonPan) {
+      isPanning = true;
+    }
 
     // #2571: while this pen-mode finger pan is live, remember the contact as a
     // tap-to-deselect candidate. It is disarmed if the finger travels past the
@@ -8625,17 +8647,19 @@ class App extends React.Component<AppProps, AppState> {
           }
         : null;
 
-    // due to event.preventDefault below, container wouldn't get focus
-    // automatically
-    this.focusContainer();
+    if (!isRightButtonPan) {
+      // due to event.preventDefault below, container wouldn't get focus
+      // automatically
+      this.focusContainer();
 
-    // preventing defualt while text editing messes with cursor/focus
-    if (!this.state.editingTextElement) {
-      // necessary to prevent browser from scrolling the page if excalidraw
-      // not full-page #4489
-      //
-      // as such, the above is broken when panning canvas while in wysiwyg
-      event.preventDefault();
+      // preventing defualt while text editing messes with cursor/focus
+      if (!this.state.editingTextElement) {
+        // necessary to prevent browser from scrolling the page if excalidraw
+        // not full-page #4489
+        //
+        // as such, the above is broken when panning canvas while in wysiwyg
+        event.preventDefault();
+      }
     }
 
     let nextPastePrevented = false;
@@ -8644,7 +8668,9 @@ class App extends React.Component<AppProps, AppState> {
         ? false
         : /Linux/.test(window.navigator.platform);
 
-    setCursor(this.interactiveCanvas, CURSOR_TYPE.GRABBING);
+    if (!isRightButtonPan) {
+      setCursor(this.interactiveCanvas, CURSOR_TYPE.GRABBING);
+    }
     // The pointer that started this pan owns it. A second contact (e.g. a
     // finger arriving to pinch-zoom) must not drive the pan session; the pinch
     // branch of handleCanvasPointerMove handles that case instead.
@@ -8674,6 +8700,23 @@ class App extends React.Component<AppProps, AppState> {
         lastX = event.clientX;
         lastY = event.clientY;
         return;
+      }
+      // #881: armed right-button pan activates only past the drag threshold —
+      // below it we just track coords so the eventual pan starts without a
+      // jump. Once activated, the release must not open the context menu.
+      if (isRightButtonPan && !isPanning) {
+        if (
+          Math.hypot(event.clientX - armX, event.clientY - armY) <
+          DRAGGING_THRESHOLD
+        ) {
+          lastX = event.clientX;
+          lastY = event.clientY;
+          return;
+        }
+        isPanning = true;
+        this.rightClickPanned = true;
+        this.focusContainer();
+        setCursor(this.interactiveCanvas, CURSOR_TYPE.GRABBING);
       }
       const deltaX = lastX - event.clientX;
       const deltaY = lastY - event.clientY;
@@ -13620,6 +13663,13 @@ class App extends React.Component<AppProps, AppState> {
     event: React.MouseEvent<HTMLElement | HTMLCanvasElement>,
   ) => {
     event.preventDefault();
+
+    // #881: a right-button drag that actually panned must not open the menu
+    // on release — the gesture was a pan, not a click.
+    if (this.rightClickPanned) {
+      this.rightClickPanned = false;
+      return;
+    }
 
     if (
       (("pointerType" in event.nativeEvent &&

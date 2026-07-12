@@ -49,7 +49,7 @@ export const SHAPES = [
   {
     icon: SelectionIcon,
     value: "selection",
-    key: KEYS.V,
+    key: [KEYS.V, KEYS.Q],
     numericKey: KEYS["1"],
     fillable: true,
     toolbar: true,

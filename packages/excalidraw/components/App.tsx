@@ -5323,10 +5323,6 @@ class App extends React.Component<AppProps, AppState> {
           event.stopPropagation();
 
           return;
-        } else if (event.key === KEYS.Q) {
-          this.toggleLock("keyboard");
-          event.stopPropagation();
-          return;
         }
       }
 

@@ -35,7 +35,7 @@ import type { AppState } from "@excalidraw/excalidraw/types";
 import type { Mutable } from "@excalidraw/common/utility-types";
 
 import { generateRoughOptions } from "./shape";
-import { ShapeCache } from "./shape";
+import { getFreedrawStrokeRadius, ShapeCache } from "./shape";
 import { LinearElementEditor } from "./linearElementEditor";
 import { getBoundTextElement, getContainerElement } from "./textElement";
 import {
@@ -167,6 +167,7 @@ export class ElementBounds {
             element.angle,
           ),
         ),
+        getFreedrawStrokeRadius(element),
       );
 
       return [
@@ -727,7 +728,10 @@ export const getBoundsFromPoints = <P extends GlobalPoint | LocalPoint>(
 const getFreeDrawElementAbsoluteCoords = (
   element: ExcalidrawFreeDrawElement,
 ): [number, number, number, number, number, number] => {
-  const [minX, minY, maxX, maxY] = getBoundsFromPoints(element.points);
+  const [minX, minY, maxX, maxY] = getBoundsFromPoints(
+    element.points,
+    getFreedrawStrokeRadius(element),
+  );
   const x1 = minX + element.x;
   const y1 = minY + element.y;
   const x2 = maxX + element.x;
@@ -1095,7 +1099,7 @@ export const getResizedElementAbsoluteCoords = (
 
   if (isFreeDrawElement(element)) {
     // Free Draw
-    bounds = getBoundsFromPoints(points);
+    bounds = getBoundsFromPoints(points, getFreedrawStrokeRadius(element));
   } else {
     // Line
     const gen = rough.generator();

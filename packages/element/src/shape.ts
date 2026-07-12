@@ -1284,6 +1284,18 @@ const getFreeDrawSvgPath = (element: ExcalidrawFreeDrawElement) => {
   ) as SVGPathString;
 };
 
+/**
+ * Max radius of the rendered freedraw ink around the raw centerline points
+ * (LaserPointer cap/body radius at full pressure). Bounds and hit areas must
+ * be padded by this value to cover the actual ink — the raw points describe
+ * only the centerline.
+ */
+export const getFreedrawStrokeRadius = (
+  element: ExcalidrawFreeDrawElement,
+): number => {
+  return (element.strokeWidth * 4.25) / 2;
+};
+
 export const getFreedrawOutlinePoints = (
   element: ExcalidrawFreeDrawElement,
 ) => {
@@ -1292,7 +1304,7 @@ export const getFreedrawOutlinePoints = (
   }
 
   // perfect-freehand used size as diameter; LaserPointer uses it as radius
-  const size = (element.strokeWidth * 4.25) / 2;
+  const size = getFreedrawStrokeRadius(element);
 
   const lp = new LaserPointer({
     size,

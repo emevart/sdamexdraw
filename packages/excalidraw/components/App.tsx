@@ -8776,6 +8776,14 @@ class App extends React.Component<AppProps, AppState> {
         ) {
           return;
         }
+        // Flush the pending throttled move BEFORE resetting the pan state: on
+        // a fast right-button flick (#881 regression) the deferred move
+        // carries the arm->pan activation (isPanning = true); running it
+        // after the reset below would re-set the flag with no teardown left
+        // to clear it, swallowing every subsequent pointerdown (dead canvas
+        // until reload). Flushing here also applies the final pan delta and
+        // disarms the pen-mode tap candidate before the static-tap decision.
+        onPointerMove.flush();
         lastPointerUp = null;
         isPanning = false;
         if (!isHoldingSpace) {
@@ -8795,9 +8803,6 @@ class App extends React.Component<AppProps, AppState> {
         window.removeEventListener(EVENT.POINTER_MOVE, onPointerMove);
         window.removeEventListener(EVENT.POINTER_UP, teardown);
         window.removeEventListener(EVENT.BLUR, teardown);
-        // flush first so any pending move (which would disarm the candidate)
-        // is applied before we decide whether this was a static tap.
-        onPointerMove.flush();
 
         // #2571 / #2632: a pen-mode single-finger static tap acts on what it
         // landed on instead of the camera. The candidate only survives here if

@@ -1,4 +1,5 @@
 import React from "react";
+import { act } from "react-dom/test-utils";
 
 import { MQ_MIN_WIDTH_DESKTOP } from "@excalidraw/common";
 
@@ -120,6 +121,59 @@ describe("right mouse button pans the canvas (#881)", () => {
     expect(h.state.scrollX).toBe(scrollX);
     expect(h.state.scrollY).toBe(scrollY);
   });
+
+  it("left-drag drawing still works after a right-drag pan", () => {
+    act(() => {
+      h.app.setActiveTool({ type: "rectangle" });
+    });
+    const canvas = GlobalTestState.interactiveCanvas;
+    // Move/up на канвасе (как Pointer-хелпер): в реальном браузере события
+    // всплывают с канваса до window/document, window-only диспатч в jsdom
+    // не достигает слушателей на document.
+    const leftDraw = (x: number, y: number) => {
+      fireEvent.pointerDown(
+        canvas,
+        pointerEvent({ button: 0, buttons: 1, clientX: x, clientY: y }),
+      );
+      fireEvent.pointerMove(
+        canvas,
+        pointerEvent({
+          button: -1,
+          buttons: 1,
+          clientX: x + 60,
+          clientY: y + 60,
+        }),
+      );
+      fireEvent.pointerUp(
+        canvas,
+        pointerEvent({
+          button: 0,
+          buttons: 0,
+          clientX: x + 60,
+          clientY: y + 60,
+        }),
+      );
+    };
+
+    // Контроль: харнесс умеет рисовать до пана.
+    leftDraw(100, 100);
+    expect(h.elements.length).toBe(1);
+
+    rightGesture([
+      [340, 340],
+      [380, 380],
+    ]);
+
+    act(() => {
+      h.app.setActiveTool({ type: "rectangle" });
+    });
+    leftDraw(200, 200);
+    expect(h.elements.length).toBe(2);
+  });
+
+  // Гонка быстрого флика (flush после teardown) живёт в отдельном файле
+  // rightButtonPanRace.test.tsx: глобальный мок throttleRAF в setupTests
+  // синхронный и структурно скрывает её здесь.
 
   it("a second right-click after a right-drag opens the menu again (flag resets)", () => {
     rightGesture([

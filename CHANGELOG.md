@@ -4,6 +4,12 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/). Версионирование: [Semantic Versioning](https://semver.org/).
 
+## [0.28.7] - 2026-07-14
+
+### Исправлено
+
+- В compact desktop toolbar подсказка под панелью временно скрывается, пока открыт picker выбора `selection`/`lasso`, и возвращается после его закрытия
+
 ## [0.26.72] - 2026-03-20
 
 ### Откачено

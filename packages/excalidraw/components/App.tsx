@@ -6240,7 +6240,7 @@ class App extends React.Component<AppProps, AppState> {
       includeLockedElements?: boolean;
     },
   ): NonDeleted<ExcalidrawElement>[] {
-    const iframeLikes: Ordered<ExcalidrawIframeElement>[] = [];
+    const iframeLikes: Ordered<NonDeleted<ExcalidrawIframeLikeElement>>[] = [];
 
     const elementsMap = this.scene.getNonDeletedElementsMap();
 
@@ -6262,8 +6262,15 @@ class App extends React.Component<AppProps, AppState> {
         const containingFrame = getContainingFrame(element, elementsMap);
         return containingFrame &&
           this.state.frameRendering.enabled &&
-          this.state.frameRendering.clip
-          ? isCursorInFrame({ x, y }, containingFrame, elementsMap)
+          this.state.frameRendering.clip &&
+          // iframe-like elements are rendered as DOM overlays and are not
+          // visually clipped by their containing frames
+          !isIframeLikeElement(element)
+          ? isCursorInFrame(
+              { x, y },
+              containingFrame as NonDeleted<ExcalidrawFrameLikeElement>,
+              elementsMap,
+            )
           : true;
       })
       .filter((el) => {
@@ -6271,7 +6278,7 @@ class App extends React.Component<AppProps, AppState> {
         // We want to preserve that order on the returned array.
         // Exception being embeddables which should be on top of everything else in
         // terms of hit testing.
-        if (isIframeElement(el)) {
+        if (isIframeLikeElement(el)) {
           iframeLikes.push(el);
           return false;
         }

@@ -174,6 +174,7 @@ export const getSelectedElements = (
     if (
       opts?.includeBoundTextElement &&
       isBoundToContainer(element) &&
+      isNonDeletedElement(element) &&
       appState.selectedElementIds[element?.containerId]
     ) {
       selectedElements.push(element);

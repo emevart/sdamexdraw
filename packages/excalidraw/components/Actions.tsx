@@ -1071,11 +1071,13 @@ export const ShapesSwitcher = ({
   setAppState,
   app,
   UIOptions,
+  onSelectionPopoverOpenChange,
 }: {
   activeTool: UIAppState["activeTool"];
   setAppState: React.Component<any, AppState>["setState"];
   app: AppClassProperties;
   UIOptions: AppProps["UIOptions"];
+  onSelectionPopoverOpenChange?: (isOpen: boolean) => void;
 }) => {
   const [isExtraToolsMenuOpen, setIsExtraToolsMenuOpen] = useState(false);
   const stylesPanelMode = useStylesPanelMode();
@@ -1347,6 +1349,7 @@ export const ShapesSwitcher = ({
                   ) || SELECTION_TOOLS[0]
                 }
                 fillable={activeTool.type === "selection"}
+                onOpenChange={onSelectionPopoverOpenChange}
               />
             );
           }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 
 import { capitalizeString } from "@excalidraw/common";
@@ -39,6 +39,8 @@ type ToolPopoverProps = {
   sideOffset?: number;
   /** Anchor element ref — popup positions relative to this instead of trigger */
   anchorRef?: React.RefObject<HTMLElement | null>;
+  /** Notifies the parent when the popup opens or closes. */
+  onOpenChange?: (isOpen: boolean) => void;
 };
 
 export const ToolPopover = ({
@@ -56,6 +58,7 @@ export const ToolPopover = ({
   onSelect,
   sideOffset: sideOffsetProp,
   anchorRef,
+  onOpenChange,
 }: ToolPopoverProps) => {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const currentType = activeTool.type;
@@ -63,22 +66,39 @@ export const ToolPopover = ({
   const SIDE_OFFSET = sideOffsetProp ?? 32 / 2 + 10;
   const { container } = useExcalidrawContainer();
 
+  const handlePopupOpenChange = useCallback(
+    (isOpen: boolean) => {
+      setIsPopupOpen(isOpen);
+      onOpenChange?.(isOpen);
+    },
+    [onOpenChange],
+  );
+
   // if currentType is not in options, close popup
-  if (!options.some((o) => o.type === currentType) && isPopupOpen) {
-    setIsPopupOpen(false);
-  }
+  useEffect(() => {
+    if (!options.some((o) => o.type === currentType) && isPopupOpen) {
+      handlePopupOpenChange(false);
+    }
+  }, [currentType, handlePopupOpenChange, isPopupOpen, options]);
 
   // Close popover when user starts interacting with the canvas (pointer down)
   useEffect(() => {
     // app.onPointerDownEmitter emits when pointer down happens on canvas area
     const unsubscribe = app.onPointerDownEmitter.on(() => {
-      setIsPopupOpen(false);
+      handlePopupOpenChange(false);
     });
     return () => unsubscribe?.();
-  }, [app]);
+  }, [app, handlePopupOpenChange]);
+
+  useEffect(
+    () => () => {
+      onOpenChange?.(false);
+    },
+    [onOpenChange],
+  );
 
   return (
-    <Popover.Root open={isPopupOpen}>
+    <Popover.Root open={isPopupOpen} onOpenChange={handlePopupOpenChange}>
       {anchorRef?.current && (
         <Popover.Anchor
           virtualRef={anchorRef as React.RefObject<HTMLElement>}
@@ -98,7 +118,7 @@ export const ToolPopover = ({
           aria-label={title}
           data-testid={dataTestId}
           onPointerDown={() => {
-            setIsPopupOpen((v) => !v);
+            handlePopupOpenChange(!isPopupOpen);
             onToolChange(defaultOption);
           }}
         />

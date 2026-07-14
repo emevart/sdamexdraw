@@ -146,6 +146,8 @@ const LayerUI = ({
   const editorInterface = useEditorInterface();
   const stylesPanelMode = useStylesPanelMode();
   const isCompactStylesPanel = stylesPanelMode === "compact";
+  const [isSelectionPopoverOpen, setIsSelectionPopoverOpen] =
+    React.useState(false);
   const tunnels = useInitializeTunnels();
 
   const spacing = isCompactStylesPanel
@@ -319,12 +321,14 @@ const LayerUI = ({
                             "App-toolbar--compact": isCompactStylesPanel,
                           })}
                         >
-                          <HintViewer
-                            appState={appState}
-                            isMobile={editorInterface.formFactor === "phone"}
-                            editorInterface={editorInterface}
-                            app={app}
-                          />
+                          {!isSelectionPopoverOpen && (
+                            <HintViewer
+                              appState={appState}
+                              isMobile={editorInterface.formFactor === "phone"}
+                              editorInterface={editorInterface}
+                              app={app}
+                            />
+                          )}
                           {heading}
                           <Stack.Row gap={spacing.toolbarInnerRowGap}>
                             <PenModeButton
@@ -347,6 +351,9 @@ const LayerUI = ({
                               activeTool={appState.activeTool}
                               UIOptions={UIOptions}
                               app={app}
+                              onSelectionPopoverOpenChange={
+                                setIsSelectionPopoverOpen
+                              }
                             />
                           </Stack.Row>
                         </Island>

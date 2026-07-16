@@ -97,8 +97,28 @@ export const ToolPopover = ({
     [onOpenChange],
   );
 
+  // Close the popup on Escape ourselves. The Popover.Root is fully controlled
+  // (no onOpenChange), so Radix's DismissableLayer never dismisses the popup on
+  // its own. Wiring onOpenChange back would let Radix close the popup on the
+  // focus-outside events that a normal trigger click produces (the radio input
+  // focuses, then App.setActiveTool() calls focusContainer()), which closed the
+  // picker immediately after opening. Handle Escape manually instead so the
+  // keyboard-dismiss behaviour is preserved without the focus-outside race.
+  useEffect(() => {
+    if (!isPopupOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handlePopupOpenChange(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isPopupOpen, handlePopupOpenChange]);
+
   return (
-    <Popover.Root open={isPopupOpen} onOpenChange={handlePopupOpenChange}>
+    <Popover.Root open={isPopupOpen}>
       {anchorRef?.current && (
         <Popover.Anchor
           virtualRef={anchorRef as React.RefObject<HTMLElement>}
@@ -157,6 +177,9 @@ export const ToolPopover = ({
                   app.setActiveTool({ type: type as any });
                   onToolChange?.(type);
                 }
+                // Radix no longer dismisses the popup for us (the Root is fully
+                // controlled), so close it explicitly once an option is picked.
+                handlePopupOpenChange(false);
               }}
             />
           ),

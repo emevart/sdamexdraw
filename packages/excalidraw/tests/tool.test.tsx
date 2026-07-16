@@ -158,6 +158,43 @@ describe("setActiveTool()", () => {
 
     expect(hasStateUpdateWarning).toBe(false);
   });
+
+  it("keeps the picker open when focus moves outside after opening (browser click sequence)", () => {
+    const selectionTrigger = document.querySelector<HTMLElement>(
+      '.App-toolbar [data-testid="toolbar-selection"]',
+    );
+
+    expect(selectionTrigger).not.toBeNull();
+
+    fireEvent.pointerDown(selectionTrigger!);
+
+    expect(document.querySelector(".tool-popover-content")).not.toBeNull();
+
+    // A real browser click on the trigger focuses the radio input inside the
+    // trigger label, then App.setActiveTool() calls focusContainer() which
+    // moves focus to the .excalidraw container. Both land outside the popover
+    // content, so Radix's DismissableLayer would treat them as "focus outside"
+    // and dismiss the popup right after it opened. Reproduce that focus
+    // sequence: the picker must stay open.
+    act(() => {
+      selectionTrigger!.focus();
+      fireEvent.focusIn(selectionTrigger!);
+    });
+
+    expect(document.querySelector(".tool-popover-content")).not.toBeNull();
+
+    const excalidrawContainer =
+      document.querySelector<HTMLElement>(".excalidraw");
+
+    expect(excalidrawContainer).not.toBeNull();
+
+    act(() => {
+      excalidrawContainer!.focus();
+      fireEvent.focusIn(excalidrawContainer!);
+    });
+
+    expect(document.querySelector(".tool-popover-content")).not.toBeNull();
+  });
 });
 describe("getToolbarTools()", () => {
   const getToolValues = (preferredSelectionTool: "selection" | "lasso") =>

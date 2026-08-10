@@ -1,6 +1,6 @@
 # Синхронизация с upstream: контрольные точки
 
-> **Обновлено:** 2026-08-10
+> **Обновлено:** 2026-08-11
 
 Форк намеренно расходится с `excalidraw/excalidraw` — полный merge не делаем
 (см. `.claude/skills/sync-upstream/SKILL.md`). Этот файл — журнал разборов
@@ -9,11 +9,11 @@ upstream: что уже рассмотрено и с каким исходом. 
 
 ---
 
-## Разбор 2026-08-10
+## Разбор 2026-08-10/11
 
 **Точка отсчёта:** `upstream/master` = `c5a50d223` (2026-08-10, `fix(editor): respect boxSelectionMode ('contain' vs 'overlap') in lasso tool (#11862)`).
 
-**Ветка:** `sync/upstream-2026-08`.
+**Ветки:** `sync/upstream-2026-08` (этап 1) и `sync/upstream-2026-08-rename` (этап 2, включает этап 1).
 
 ### Сколько реально отставали
 
@@ -32,16 +32,17 @@ upstream: что уже рассмотрено и с каким исходом. 
 [!] Считать отставание только `git log` — ошибка, завышает почти в полтора раза.
 Правильный инструмент — `git cherry master upstream/master` (сравнение по patch-id).
 
-### Итог разбора
+### Итог
 
 | Исход | Кол-во |
 |---|---|
-| **Применено** | **31** |
-| Конфликтуют, отложены | 38 |
+| **Применено** | **37** из 71 |
+| Конфликтуют, отложены | 34 |
 | Пропущены осознанно (demo-app / docs / ci) | 6 |
-| Откачены как зависимые | 2 |
 
-Плюс один свой коммит: `fix(element): добавить импорт isNonDeletedElement после cherry-pick #11660`.
+Плюс три своих коммита: переименование файлов под upstream, импорт
+`isNonDeletedElement` (#11660 принёс вызов без импорта) и снятие неиспользуемого
+`getClientColor` (#11377).
 
 ### Проверки на ветке
 
@@ -49,59 +50,65 @@ upstream: что уже рассмотрено и с каким исходом. 
 |---|---|
 | `yarn test:typecheck` | [OK] чисто |
 | `yarn build:packages` | [OK] чисто |
-| `yarn test:code` | 4 ошибки — **предсуществующие**, есть и на `master` (`tests/rightButtonPanRace.test.tsx`, `import/first`) |
+| `yarn test:code` | 4 ошибки — **предсуществующие**, ровно те же на `master` (`tests/rightButtonPanRace.test.tsx`, `import/first`) |
 | `yarn test:app` (binding + history) | 76 failed / 10 passed / 88 против baseline на `master` 73 / 8 / 83 |
 
-По тестам регресса нет: прошедших стало **больше** (8 -> 10), а +3 падения — это
-новые тесты, приехавшие с upstream-коммитами и рассчитанные на upstream-код,
-которого в форке нет. Базовое состояние тестов в форке и так красное
-(см. `CLAUDE.md`, `e2e/CLAUDE.md`), и в CI они не входят — CI гейтит typecheck + build.
+Регресса по тестам нет: прошедших стало больше (8 -> 10), а +3 падения — новые
+тесты, приехавшие с upstream и рассчитанные на upstream-код, которого в форке нет.
+Базовое состояние тестов красное и без нас; в CI они не входят (CI = typecheck + build).
 
-### Главный вывод: почему 38 коммитов не легли
+### Этап 2: переименование файлов под upstream
 
-Конфликтуют не патчи, а **структура**. Два источника:
+Форк и upstream разошлись в именовании **четырёх** файлов (не десятков, как
+казалось): `animated-trail.ts` -> `animatedTrail.ts`, `laser-trails.ts` ->
+`laserTrails.ts`, `MobileToolBar.{tsx,scss}` -> `MobileToolbar.{tsx,scss}`.
+Вместе с файлом upstream переименовал и сам компонент (`MobileToolBar` ->
+`MobileToolbar`).
 
-1. **Расхождение в именовании файлов.** У нас `laser-trails.ts`, `animated-trail.ts`
-   (kebab-case), в upstream — `laserTrails.ts`, `animatedTrail.ts`. Коммит
-   `b42b1a193` (#11377) прямо содержит переименование `laser-trails.ts => laserTrails.ts`,
-   и cherry-pick тащит его за собой, переименовывая файлы на диске и ломая импорты
-   по всему пакету. Сам конфликт при этом тривиален (одна строка импорта).
-2. **Наши кастомизации в горячих файлах.** Топ конфликтных:
-   `App.tsx` (25 коммитов), `types.ts` (18), `LayerUI.tsx` (9), `actionCanvas.tsx` (9),
-   `index.tsx` (8), `css/styles.scss` (8).
+[!] **Переименование само по себе не разблокировало ни одного коммита** — повторный
+проход после него дал 0 из 38. Гипотеза «конфликтует структура» оказалась неверной:
+git и так распознавал переименование как rename. Реальный эффект был другой —
+после переименования конфликт в ключевом коммите #11377 распался на четыре
+однострочных конфликта в импортах вместо переплетения с rename, и его стало
+возможно разобрать руками. А #11377 был блокером цепочки: он удаляет
+`animation-frame-handler.ts` и переносит логику в `renderer/animation.ts`, откуда
+`AnimationController.cancelScheduledFrame` нужен коммитам #11553 и #11562.
 
-Из 38 конфликтных **26** упираются в `App.tsx` или переименованные файлы, **12** — прочее.
+Итог этапа 2: **+6 коммитов** (#11377 вручную, затем #11553, #11562 и ещё три
+следом). Переименование при этом всё равно полезно само по себе — оно убирает
+постоянный источник шума в будущих синхронизациях.
+
+[!] Две пары отличаются только регистром буквы (`ToolBar` -> `Toolbar`). На Windows
+переименовывать в два шага через временное имя, иначе case-insensitive ФС теряет
+изменение.
+
+### Почему 34 всё ещё не легли
+
+Наши кастомизации в горячих файлах. Топ конфликтных:
+`App.tsx` (25 коммитов), `types.ts` (18), `LayerUI.tsx` (9), `actionCanvas.tsx` (9),
+`index.tsx` (8), `css/styles.scss` (8). Это не механическая проблема — каждый такой
+коммит требует ручного решения, что делать с нашей версией участка.
 
 ### Порядок применения имеет значение
 
-Первый проход дал 20 чистых из 71. После их применения повторный проход по
-оставшимся дал **ещё 12** — контекст изменился, и патчи легли. Третий проход не дал
-ничего (сходимость). **Гонять cherry-pick повторными проходами до сходимости**, а не
-судить по одному прогону: краш-фикс #11814 в первом проходе конфликтовал, во втором
-лёг чисто.
-
-### Откачены как зависимые
-
-`#11553` (AnimationController for scrollToContent) и `#11562` (improve scroll animation
-interpolation) применяются чисто, но требуют `AnimationController.cancelScheduledFrame`,
-который приходит из `#11377` — а тот тянет переименование файлов. Оставлять их без
-`#11377` нельзя: `tsc` падает с `TS2339`. Вернуть можно только вместе с решением по
-переименованию.
-
-### Открытый вопрос
-
-Принимать ли upstream-переименование файлов (kebab -> camelCase) разом? Это разовая
-боль с починкой импортов, но она разблокирует значительную часть из 38 отложенных и
-удешевит все будущие синхронизации. Пока не решено — решение за founder'ом.
+Первый проход дал 20 чистых из 71. Повторный по оставшимся — **ещё 12**, третий — 0
+(сходимость). Краш-фикс #11814 в первом проходе конфликтовал, во втором лёг чисто.
+**Гонять проходы до сходимости**, не судить по одному прогону.
 
 ---
 
-## Применено (31)
+## Применено (37)
 
-Все с `git cherry-pick -x`, то есть в сообщении каждого есть исходный upstream SHA.
+Все через `git cherry-pick -x`, то есть в сообщении каждого есть исходный upstream SHA.
 
 | upstream SHA | Коммит |
 |---|---|
+| `53732f08f` | fix(editor): prevent eyedropper preview from overflowing viewport  (#11722) |
+| `65aa577e3` | fix(editor): fix AnimationController scheduling race conds (#11678) |
+| `aaa14e9df` | feat(editor): show cursor hint when switching arrow types (#11608) |
+| `c070c8ffa` | fix(editor): improve scroll animation interpolation (#11562) |
+| `e4c70cb6c` | feat(editor): AnimationController for scrollToContent (#11553) |
+| `b42b1a193` | fix(editor): excessive battery usage (#11377) |
 | `c5a50d223` | fix(editor): respect boxSelectionMode ('contain' vs 'overlap') in lasso tool (#11862) |
 | `5e375b433` | fix(editor): do not flicker bbox when drag-creating line midpoint (#11834) |
 | `46c42a6cb` | fix(editor): initialize selectedLinearElement after pasting arrows (#11803) |
@@ -136,22 +143,19 @@ interpolation) применяются чисто, но требуют `Animation
 
 ---
 
-## Отложены: конфликт (38)
+## Отложены: конфликт (34)
 
-Не применялись. Причина — расхождение структуры (см. «Главный вывод» выше), а не
-содержание патча. При следующем разборе начинать с решения по переименованию файлов:
-оно разблокирует значительную часть этого списка.
+Не применялись. Причина — наши кастомизации в тех же участках (в основном `App.tsx`,
+`types.ts`, `LayerUI.tsx`). Каждый требует ручного решения, механически не берутся.
 
 | upstream SHA | Коммит |
 |---|---|
-| `b42b1a193` | fix(editor): excessive battery usage (#11377) |
 | `647a264a4` | feat(packages/excalidraw): consolidate theme state handling (#11453) |
 | `cd514d72d` | feat(editor): LaserPointer based freedraw (#11507) |
 | `070df27e4` | fix(editor): Modern TS require imports from rootDir (#11552) |
 | `51ca8abde` | feat(packages/excalidraw): viewport locking (#11554) |
 | `5b0f5a4c2` | fix(editor): revert viewport animation back to 500ms (#11600) |
 | `9357f98a9` | fix(editor): optimize UI rendering during animation (#11604) |
-| `aaa14e9df` | feat(editor): show cursor hint when switching arrow types (#11608) |
 | `dd8296af1` | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) |
 | `ba0387d18` | chore(editor): Update translations from Crowdin (#10731) |
 | `ed7c0c1d7` | chore(editor): Refactor Actions for clarity (#11632) |
@@ -163,9 +167,7 @@ interpolation) применяются чисто, но требуют `Animation
 | `5ca083436` | feat(packages/excalidraw): add `props.activeTool` and related (#11665) |
 | `374716304` | fix(editor): improve UX around locked animations (#11671) |
 | `93dd51060` | feat(packages/excalidraw):  add `props.ui.enabled.zoom/scrollBackToContent` (#11677) |
-| `65aa577e3` | fix(editor): fix AnimationController scheduling race conds (#11678) |
 | `a1d9b16b0` | fix(editor): show scroll-back-to-content button on mobile (#11680) |
-| `53732f08f` | fix(editor): prevent eyedropper preview from overflowing viewport  (#11722) |
 | `a3b90897b` | fix(editor): Lost focus point on transition to inside-inside (#10964) |
 | `f179f7ffd` | feat(editor): draw to shape (auto-detection) (#9313) |
 | `b2e81e38a` | feat(editor): `autoshape` text + line improvements (#11752) |
@@ -218,10 +220,14 @@ git checkout -b sync/upstream-<YYYY-MM> master
    `yarn test:app` сверять с baseline на `master`, а не с нулём.
 6. Дописать новый раздел в этот файл.
 
-[!] Грабли, пойманные 2026-08-10:
+[!] Грабли, пойманные 2026-08-10/11:
 - `git cherry-pick --abort` падает с `Untracked working tree file ... would be overwritten`,
   если патч добавлял файл. Лечение: `git cherry-pick --quit && git reset --hard HEAD && git clean -fd packages/`.
 - После неудачного abort в рабочем дереве остаются маркеры конфликта, и `tsc` сыпет
-  `TS1185` в файлах, которых нет в коммитах. Проверять `git status` перед тем, как верить typecheck.
+  `TS1185` в файлах, которых нет ни в одном коммите. Проверять `git status` перед тем,
+  как верить typecheck.
 - Cherry-pick может принести вызов без импорта (файл в форке разошёлся): так вышло с
-  `isNonDeletedElement` из #11660 — `tsc` поймал, импорт дописан руками.
+  `isNonDeletedElement` из #11660 — поймал `tsc`.
+- Разрешая конфликт «взять upstream целиком», проверять, не тащит ли это чужую логику
+  поверх нашей кастомизации: так приехал `getClientColor`, хотя цвет лазера у нас
+  намеренно единый.

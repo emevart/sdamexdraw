@@ -21,7 +21,7 @@ import type {
 
 import { type AnimationFrameHandler } from "../animation-frame-handler";
 
-import { AnimatedTrail } from "../animated-trail";
+import { AnimatedTrail } from "../animatedTrail";
 
 import { getLassoSelectedElementIds } from "./utils";
 

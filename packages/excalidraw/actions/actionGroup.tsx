@@ -47,7 +47,7 @@ import { getShortcutKey } from "../shortcut";
 
 import { register } from "./register";
 
-import type { AppClassProperties, AppState, UIAppState } from "../types";
+import type { AppClassProperties, UIAppState } from "../types";
 
 const allElementsInSameGroup = (
   elements: readonly ExcalidrawElement[],

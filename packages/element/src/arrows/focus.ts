@@ -27,7 +27,6 @@ import type {
   ElementsMap,
   ExcalidrawArrowElement,
   ExcalidrawBindableElement,
-  NonDeleted,
   FixedPointBinding,
   NonDeletedSceneElementsMap,
   PointsPositionUpdates,

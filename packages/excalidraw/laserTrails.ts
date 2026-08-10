@@ -2,8 +2,9 @@ import { DEFAULT_LASER_COLOR, easeOut } from "@excalidraw/common";
 
 import type { LaserPointerOptions } from "@excalidraw/laser-pointer";
 
+// getClientColor из upstream здесь НЕ нужен: в форке цвет лазерного следа
+// намеренно один для всех (DEFAULT_LASER_COLOR), а не по участнику.
 import { AnimatedTrail } from "./animatedTrail";
-import { getClientColor } from "./clients";
 
 import type { Trail } from "./animatedTrail";
 import type App from "./components/App";

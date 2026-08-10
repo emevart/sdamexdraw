@@ -13,7 +13,7 @@ upstream: что уже рассмотрено и с каким исходом. 
 
 **Точка отсчёта:** `upstream/master` = `c5a50d223` (2026-08-10, `fix(editor): respect boxSelectionMode ('contain' vs 'overlap') in lasso tool (#11862)`).
 
-**Ветки:** `sync/upstream-2026-08` (этап 1) и `sync/upstream-2026-08-rename` (этап 2, включает этап 1).
+**Ветка:** `sync/upstream-2026-08-rename`.
 
 ### Сколько реально отставали
 
@@ -36,15 +36,15 @@ upstream: что уже рассмотрено и с каким исходом. 
 
 | Исход | Кол-во |
 |---|---|
-| **Применено** | **37** из 71 |
-| Конфликтуют, отложены | 34 |
-| Пропущены осознанно (demo-app / docs / ci) | 6 |
+| **Применено** | **43** из 71 |
+| Отклонено с обоснованием | 28 |
+| Пропущено (demo-app / docs / ci) | 6 |
 
-Плюс три своих коммита: переименование файлов под upstream, импорт
-`isNonDeletedElement` (#11660 принёс вызов без импорта) и снятие неиспользуемого
-`getClientColor` (#11377).
+Плюс свои коммиты: переименование файлов под upstream и три починки следов
+ручного разбора (импорт `isNonDeletedElement`, снятие `getClientColor`,
+уборка осиротевших импортов).
 
-### Проверки на ветке
+### Проверки
 
 | Гейт | Результат |
 |---|---|
@@ -53,56 +53,59 @@ upstream: что уже рассмотрено и с каким исходом. 
 | `yarn test:code` | 4 ошибки — **предсуществующие**, ровно те же на `master` (`tests/rightButtonPanRace.test.tsx`, `import/first`) |
 | `yarn test:app` (binding + history) | 76 failed / 10 passed / 88 против baseline на `master` 73 / 8 / 83 |
 
-Регресса по тестам нет: прошедших стало больше (8 -> 10), а +3 падения — новые
-тесты, приехавшие с upstream и рассчитанные на upstream-код, которого в форке нет.
-Базовое состояние тестов красное и без нас; в CI они не входят (CI = typecheck + build).
+Регресса нет: прошедших стало больше (8 -> 10), а +3 падения — новые тесты,
+приехавшие с upstream и рассчитанные на upstream-код, которого в форке нет.
 
-### Этап 2: переименование файлов под upstream
+### Имена файлов приведены к upstream
 
-Форк и upstream разошлись в именовании **четырёх** файлов (не десятков, как
-казалось): `animated-trail.ts` -> `animatedTrail.ts`, `laser-trails.ts` ->
-`laserTrails.ts`, `MobileToolBar.{tsx,scss}` -> `MobileToolbar.{tsx,scss}`.
-Вместе с файлом upstream переименовал и сам компонент (`MobileToolBar` ->
-`MobileToolbar`).
+`animated-trail.ts` -> `animatedTrail.ts`, `laser-trails.ts` -> `laserTrails.ts`,
+`MobileToolBar.{tsx,scss}` -> `MobileToolbar.{tsx,scss}` (upstream переименовал и
+сам компонент). Расхождений было **четыре**, а не десятки.
 
-[!] **Переименование само по себе не разблокировало ни одного коммита** — повторный
-проход после него дал 0 из 38. Гипотеза «конфликтует структура» оказалась неверной:
-git и так распознавал переименование как rename. Реальный эффект был другой —
-после переименования конфликт в ключевом коммите #11377 распался на четыре
-однострочных конфликта в импортах вместо переплетения с rename, и его стало
-возможно разобрать руками. А #11377 был блокером цепочки: он удаляет
-`animation-frame-handler.ts` и переносит логику в `renderer/animation.ts`, откуда
-`AnimationController.cancelScheduledFrame` нужен коммитам #11553 и #11562.
+[!] Само переименование **не разблокировало ни одного коммита** автоматически —
+проход после него дал 0 из 38. Гипотеза «конфликтует структура» неверна: git и так
+распознавал rename. Польза оказалась косвенной: конфликт в #11377 распался на
+однострочные в импортах, его удалось разобрать руками, а он был блокером цепочки
+(даёт `cancelScheduledFrame` для #11553 и #11562). Переименование при этом снимает
+постоянный источник шума в будущих синхронизациях — принято навсегда.
 
-Итог этапа 2: **+6 коммитов** (#11377 вручную, затем #11553, #11562 и ещё три
-следом). Переименование при этом всё равно полезно само по себе — оно убирает
-постоянный источник шума в будущих синхронизациях.
-
-[!] Две пары отличаются только регистром буквы (`ToolBar` -> `Toolbar`). На Windows
+[!] Две пары отличались только регистром (`ToolBar` -> `Toolbar`). На Windows
 переименовывать в два шага через временное имя, иначе case-insensitive ФС теряет
 изменение.
 
-### Почему 34 всё ещё не легли
-
-Наши кастомизации в горячих файлах. Топ конфликтных:
-`App.tsx` (25 коммитов), `types.ts` (18), `LayerUI.tsx` (9), `actionCanvas.tsx` (9),
-`index.tsx` (8), `css/styles.scss` (8). Это не механическая проблема — каждый такой
-коммит требует ручного решения, что делать с нашей версией участка.
-
 ### Порядок применения имеет значение
 
-Первый проход дал 20 чистых из 71. Повторный по оставшимся — **ещё 12**, третий — 0
+Первый проход дал 20 чистых из 71, повторный по оставшимся — ещё 12, третий — 0
 (сходимость). Краш-фикс #11814 в первом проходе конфликтовал, во втором лёг чисто.
 **Гонять проходы до сходимости**, не судить по одному прогону.
 
+### Как разбирались конфликтные
+
+Каждый оставшийся конфликт открывался руками. Рабочий приём — смотреть не на размер
+патча, а на то, **где лежит суть фикса**: у #11827 конфликтовал только косметический
+`actionGroup.tsx`, а сама починка порядка bound text была в `restore.ts` и легла чисто,
+поэтому коммит принят с нашей версией кнопки. Обратный случай — #11600: конфликт
+выглядел безобидным (CHANGELOG), но фикс правил `viewport.ts`, файла из непринятого
+#11554, то есть чинил несуществующую у нас функциональность.
+
+Ещё одна ловушка: «взять upstream целиком» тащит чужую логику поверх кастомизации.
+Так приехал `getClientColor` — upstream красит лазерный след по участнику, а у нас
+цвет намеренно единый.
+
 ---
 
-## Применено (37)
+## Применено (43)
 
-Все через `git cherry-pick -x`, то есть в сообщении каждого есть исходный upstream SHA.
+Все через `git cherry-pick -x` — в сообщении каждого есть исходный upstream SHA.
 
 | upstream SHA | Коммит |
 |---|---|
+| `acb48c3f4` | fix(editor): make embeddable ignore higher-z-index non-framelike elements (#11662) |
+| `c9c96f619` | fix(editor): normalize container + bound text order on restore (#11827) |
+| `e4ab62673` | feat(packages/excalidraw): add `props.className` (#11839) |
+| `647a264a4` | feat(packages/excalidraw): consolidate theme state handling (#11453) |
+| `a3b90897b` | fix(editor): Lost focus point on transition to inside-inside (#10964) |
+| `070df27e4` | fix(editor): Modern TS require imports from rootDir (#11552) |
 | `53732f08f` | fix(editor): prevent eyedropper preview from overflowing viewport  (#11722) |
 | `65aa577e3` | fix(editor): fix AnimationController scheduling race conds (#11678) |
 | `aaa14e9df` | feat(editor): show cursor hint when switching arrow types (#11608) |
@@ -143,55 +146,61 @@ git и так распознавал переименование как rename.
 
 ---
 
-## Отложены: конфликт (34)
+## Отклонено с обоснованием (28)
 
-Не применялись. Причина — наши кастомизации в тех же участках (в основном `App.tsx`,
-`types.ts`, `LayerUI.tsx`). Каждый требует ручного решения, механически не берутся.
+Разобраны поштучно. Это **решение, а не «не осилили»** — при следующей синхронизации
+их не перебирать заново, если не изменилось основание (например, если решим завести
+у себя viewport API или новый тулбар).
 
-| upstream SHA | Коммит |
+Сгруппировано по причинам:
+
+| Причина | Кол-во |
 |---|---|
-| `647a264a4` | feat(packages/excalidraw): consolidate theme state handling (#11453) |
-| `cd514d72d` | feat(editor): LaserPointer based freedraw (#11507) |
-| `070df27e4` | fix(editor): Modern TS require imports from rootDir (#11552) |
-| `51ca8abde` | feat(packages/excalidraw): viewport locking (#11554) |
-| `5b0f5a4c2` | fix(editor): revert viewport animation back to 500ms (#11600) |
-| `9357f98a9` | fix(editor): optimize UI rendering during animation (#11604) |
-| `dd8296af1` | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) |
-| `ba0387d18` | chore(editor): Update translations from Crowdin (#10731) |
-| `ed7c0c1d7` | chore(editor): Refactor Actions for clarity (#11632) |
-| `339d3c373` | feat(editor): toolbar / active tool rewrites (#11649) |
-| `d331bb49f` | fix(editor): avoid overlap of flowchart children (#11532) |
-| `e9c856d26` | chore(editor): streamline getSelectedElementsByGroup (#11636) |
-| `2423819ee` | feat(packages/excalidraw): interaction and UI control (#11605) |
-| `acb48c3f4` | fix(editor): make embeddable ignore higher-z-index non-framelike elements (#11662) |
-| `5ca083436` | feat(packages/excalidraw): add `props.activeTool` and related (#11665) |
-| `374716304` | fix(editor): improve UX around locked animations (#11671) |
-| `93dd51060` | feat(packages/excalidraw):  add `props.ui.enabled.zoom/scrollBackToContent` (#11677) |
-| `a1d9b16b0` | fix(editor): show scroll-back-to-content button on mobile (#11680) |
-| `a3b90897b` | fix(editor): Lost focus point on transition to inside-inside (#10964) |
-| `f179f7ffd` | feat(editor): draw to shape (auto-detection) (#9313) |
-| `b2e81e38a` | feat(editor): `autoshape` text + line improvements (#11752) |
-| `1acf66eda` | feat(editor): bind text to hovered arrow endpoint (#11777) |
-| `39103bd33` | chore(editor): Update translations from Crowdin (#11813) |
-| `792ea3a06` | feat(editor): bucket fill (#11799) |
-| `1da120e91` | fix(editor): include custom tools in pointer capture (#11826) |
-| `c9c96f619` | fix(editor): normalize container + bound text order on restore (#11827) |
-| `85270fcc8` | feat(packages/excalidraw): ViewportStatusFrame & factor out user-follow state (#11819) |
-| `e33a1c0e8` | feat(packages/excalidraw): do not dedupe collaborators (#11835) |
-| `74789584b` | feat(packages/excalidraw): support ViewportStatusFrame label onClick (#11838) |
-| `1e22618ab` | fix(packages/excalidraw): viewportStatusFrame label offset on mobile (#11840) |
-| `e4ab62673` | feat(packages/excalidraw): add `props.className` (#11839) |
-| `219571a71` | fix(editor): viewportportStatusFrame UI fixes (#11841) |
-| `4872083c0` | feat(editor): bucketfill cursor + eyedropper support (#11849) |
-| `cf212b2f3` | feat(editor): eyedropper fixes and improvements (#11859) |
+| Новая фича рисования (bucket fill, eyedropper, freedraw, draw-to-shape, autoshape) — тянет файлы, которых в форке нет | 6 |
+| Зависит от viewport API (#11554), который не принят | 6 |
+| Переписывает публичный API и тулбар — конфликт с нашим кастомным тулбаром | 4 |
+| Новая UI-фича ViewportStatusFrame | 3 |
+| chore-рефактор без функциональной пользы | 2 |
+| Переводы Crowdin — у нас свои локали | 2 |
+| Прочее (collab-модель, flowchart, цепочка привязок, типовой рефактор по 81 файлу) | 5 |
+
+| upstream SHA | Коммит | Блоков | Почему отклонён |
+|---|---|---|---|
+| `4872083c0` | feat(editor): bucketfill cursor + eyedropper support (#11849) | 0 | Новая фича рисования; тянет файлы, которых в форке нет |
+| `5b0f5a4c2` | fix(editor): revert viewport animation back to 500ms (#11600) | 1 | Зависит от viewport API (#11554), который не принят |
+| `e9c856d26` | chore(editor): streamline getSelectedElementsByGroup (#11636) | 2 | chore-рефактор без функциональной пользы |
+| `b2e81e38a` | feat(editor): `autoshape` text + line improvements (#11752) | 2 | Новая фича рисования; тянет файлы, которых в форке нет |
+| `1da120e91` | fix(editor): include custom tools in pointer capture (#11826) | 2 | Переписывает публичный API и тулбар — конфликт с нашим кастомным тулбаром |
+| `51ca8abde` | feat(packages/excalidraw): viewport locking (#11554) | 2 | Зависит от viewport API (#11554), который не принят |
+| `cf212b2f3` | feat(editor): eyedropper fixes and improvements (#11859) | 2 | Новая фича рисования; тянет файлы, которых в форке нет |
+| `74789584b` | feat(packages/excalidraw): support ViewportStatusFrame label onClick (#11838) | 3 | Новая UI-фича ViewportStatusFrame, у нас отсутствует |
+| `9357f98a9` | fix(editor): optimize UI rendering during animation (#11604) | 3 | Зависит от viewport API (#11554), который не принят |
+| `1e22618ab` | fix(packages/excalidraw): viewportStatusFrame label offset on mobile (#11840) | 4 | Новая UI-фича ViewportStatusFrame, у нас отсутствует |
+| `e33a1c0e8` | feat(packages/excalidraw): do not dedupe collaborators (#11835) | 5 | Collab-поведение; у нас своя модель присутствия |
+| `d331bb49f` | fix(editor): avoid overlap of flowchart children (#11532) | 5 | Flowchart-фича, в нашем сценарии не используется |
+| `a1d9b16b0` | fix(editor): show scroll-back-to-content button on mobile (#11680) | 5 | Зависит от viewport API (#11554), который не принят |
+| `1acf66eda` | feat(editor): bind text to hovered arrow endpoint (#11777) | 6 | Зависит от непринятой цепочки привязок |
+| `dd8296af1` | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) | 6 | Типовой рефактор по 81 файлу — цена выше пользы |
+| `cd514d72d` | feat(editor): LaserPointer based freedraw (#11507) | 7 | Новая фича рисования; тянет файлы, которых в форке нет |
+| `ba0387d18` | chore(editor): Update translations from Crowdin (#10731) | 7 | Переводы Crowdin — у нас свои локали |
+| `ed7c0c1d7` | chore(editor): Refactor Actions for clarity (#11632) | 8 | chore-рефактор без функциональной пользы |
+| `85270fcc8` | feat(packages/excalidraw): ViewportStatusFrame & factor out user-follow state (#11819) | 9 | Новая UI-фича ViewportStatusFrame, у нас отсутствует |
+| `219571a71` | fix(editor): viewportportStatusFrame UI fixes (#11841) | 15 | Конфликт с кастомизациями форка |
+| `2423819ee` | feat(packages/excalidraw): interaction and UI control (#11605) | 18 | Переписывает публичный API и тулбар — конфликт с нашим кастомным тулбаром |
+| `792ea3a06` | feat(editor): bucket fill (#11799) | 19 | Новая фича рисования; тянет файлы, которых в форке нет |
+| `93dd51060` | feat(packages/excalidraw):  add `props.ui.enabled.zoom/scrollBackToContent` (#11677) | 22 | Зависит от viewport API (#11554), который не принят |
+| `f179f7ffd` | feat(editor): draw to shape (auto-detection) (#9313) | 24 | Новая фича рисования; тянет файлы, которых в форке нет |
+| `339d3c373` | feat(editor): toolbar / active tool rewrites (#11649) | 32 | Переписывает публичный API и тулбар — конфликт с нашим кастомным тулбаром |
+| `5ca083436` | feat(packages/excalidraw): add `props.activeTool` and related (#11665) | 34 | Переписывает публичный API и тулбар — конфликт с нашим кастомным тулбаром |
+| `374716304` | fix(editor): improve UX around locked animations (#11671) | 45 | Зависит от viewport API (#11554), который не принят |
+| `39103bd33` | chore(editor): Update translations from Crowdin (#11813) | 132 | Переводы Crowdin — у нас свои локали |
 
 ---
 
-## Пропущены осознанно (6)
+## Пропущены (6)
 
 Не трогают `packages/` — только demo-приложение `excalidraw-app/`, docs или CI.
 `excalidraw-app/` в нашем флоу не используется (`CLAUDE.md`: «НЕ трогать»).
-**Повторно не разбирать.**
 
 | upstream SHA | Коммит |
 |---|---|
@@ -216,9 +225,11 @@ git checkout -b sync/upstream-<YYYY-MM> master
 2. Вычесть всё, что уже перечислено в таблицах этого файла.
 3. Гнать `git cherry-pick -x` в хронологическом порядке, конфликтные — `--abort` и в отложенные.
 4. **Повторять проход по отложенным до сходимости** (порядок влияет).
-5. Гейты: `yarn test:typecheck` + `yarn build:packages` обязательно; `yarn test:code` и
+5. Оставшиеся разбирать руками: сначала смотреть, **где суть коммита** — если она в
+   файле, который лёг чисто, конфликт часто косметический и берётся наша сторона.
+6. Гейты: `yarn test:typecheck` + `yarn build:packages` обязательно; `yarn test:code` и
    `yarn test:app` сверять с baseline на `master`, а не с нулём.
-6. Дописать новый раздел в этот файл.
+7. Дописать новый раздел в этот файл.
 
 [!] Грабли, пойманные 2026-08-10/11:
 - `git cherry-pick --abort` падает с `Untracked working tree file ... would be overwritten`,
@@ -226,8 +237,11 @@ git checkout -b sync/upstream-<YYYY-MM> master
 - После неудачного abort в рабочем дереве остаются маркеры конфликта, и `tsc` сыпет
   `TS1185` в файлах, которых нет ни в одном коммите. Проверять `git status` перед тем,
   как верить typecheck.
-- Cherry-pick может принести вызов без импорта (файл в форке разошёлся): так вышло с
-  `isNonDeletedElement` из #11660 — поймал `tsc`.
-- Разрешая конфликт «взять upstream целиком», проверять, не тащит ли это чужую логику
-  поверх нашей кастомизации: так приехал `getClientColor`, хотя цвет лазера у нас
-  намеренно единый.
+- Cherry-pick приносит вызов без импорта, если файл в форке разошёлся (`isNonDeletedElement`
+  из #11660). Ловится только `tsc`.
+- Разрешая «взять upstream целиком», проверять, не тащит ли это чужую логику поверх нашей
+  кастомизации (`getClientColor`).
+- `DU`-конфликт (файл удалён у нас, изменён у них) на пакете, которого в форке нет
+  (`packages/laser-pointer`), разрешается `git update-index --force-remove`.
+- После ручных резолвов проверять eslint на осиротевшие импорты — `--max-warnings=0`
+  роняет сборку из-за одного unused-типа.

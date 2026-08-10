@@ -19,6 +19,11 @@ import { getFrameChildren } from "./frame";
 import { LinearElementEditor } from "./linearElementEditor";
 import { selectGroupsForSelectedElements } from "./groups";
 
+// Импорт из барреля: upstream-коммит #11660 добавил вызов isNonDeletedElement,
+// но у нас его импорт не приехал -- в форке этот файл разошёлся с upstream.
+// Паттерн `from "."` уже используется в fractionalIndex.ts.
+import { isNonDeletedElement } from ".";
+
 import type {
   ElementsMap,
   ElementsMapOrArray,

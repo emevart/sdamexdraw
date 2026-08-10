@@ -55,7 +55,7 @@ yarn test:playwright  # e2e (manual, не в CI)
 - **`ci.yml`** -- typecheck + build на push в master
 - **`publish.yml`** -- npm publish на `v*` tag push
 - **PRs (если нужны):** `gh pr create --repo emevart/sdamexdraw` (НЕ upstream)
-- **Upstream sync:** см. `/sync-upstream` skill
+- **Upstream sync:** см. `/sync-upstream` skill. [!] Журнал разборов — `docs/upstream-sync.md`: что уже рассмотрено и с каким исходом. **Читать ПЕРЕД новой синхронизацией**, коммиты из его таблиц повторно не разбирать.
 
 ## Skills
 

@@ -593,14 +593,6 @@ export type Gesture = {
   lastCenter: { x: number; y: number } | null;
   initialDistance: number | null;
   initialScale: number | null;
-  /**
-   * Пальцы, приславшие pointermove с прошлого пересчёта масштаба.
-   *
-   * События приходят по одному на палец, поэтому между ними расстояние
-   * измеряется по «разновозрастным» координатам и скачет на величину шага
-   * одного пальца. Масштаб пересчитывается только когда обновились оба.
-   */
-  zoomSamples: Set<number>;
 };
 
 export declare class GestureEvent extends UIEvent {

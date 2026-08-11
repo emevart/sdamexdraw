@@ -146,6 +146,33 @@ describe("распад жеста с двух пальцев до одного",
     expect(h.elements).toHaveLength(0);
   });
 
+  it("'рука': оставшийся палец двигает холст ОДИН раз, а не дважды", async () => {
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    await waitFor(() => expect(h.state.width).toBe(200));
+
+    React.act(() => {
+      h.app.setActiveTool({ type: "hand" });
+    });
+    expect(h.state.zoom.value).toBe(1);
+
+    const finger1 = new Pointer("touch", 1);
+    const finger2 = new Pointer("touch", 2);
+
+    finger1.downAt(50, 50);
+    finger2.downAt(120, 50);
+    finger2.up();
+
+    // под рукой живёт настоящая сессия панорамирования, и она переживает
+    // жест -- gestureCollapsePan не должен применить сдвиг вторым слоем
+    const before = { x: h.state.scrollX, y: h.state.scrollY };
+    finger1.move(20, -12);
+
+    expect(h.state.scrollX - before.x).toBeCloseTo(20, 5);
+    expect(h.state.scrollY - before.y).toBeCloseTo(-12, 5);
+
+    finger1.up();
+  });
+
   it("после полного отрыва рисование снова работает", async () => {
     await render(<Excalidraw handleKeyboardGlobally={true} />);
     await waitFor(() => expect(h.state.width).toBe(200));

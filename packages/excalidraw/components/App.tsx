@@ -4670,8 +4670,12 @@ class App extends React.Component<AppProps, AppState> {
     const wasMultiTouchGesture = gesture.pointers.size >= 2;
     gesture.pointers.delete(event.pointerId);
 
-    if (wasMultiTouchGesture && gesture.pointers.size === 1) {
-      // передаём панорамирование оставшемуся пальцу (см. gestureCollapsePan)
+    if (wasMultiTouchGesture && gesture.pointers.size === 1 && !isPanning) {
+      // Передаём панорамирование оставшемуся пальцу (см. gestureCollapsePan).
+      //
+      // [!] Только если настоящей сессии панорамирования НЕТ. Под рукой,
+      // pen mode и просмотром она есть и переживает жест -- тогда сдвиг
+      // применили бы дважды, и холст ехал бы вдвое быстрее пальца.
       const [[pointerId, coords]] = [...gesture.pointers.entries()];
       gestureCollapsePan = { pointerId, lastX: coords.x, lastY: coords.y };
     } else if (
@@ -7635,7 +7639,10 @@ class App extends React.Component<AppProps, AppState> {
     if (
       gestureCollapsePan &&
       gestureCollapsePan.pointerId === event.pointerId &&
-      gesture.pointers.size < 2
+      gesture.pointers.size < 2 &&
+      // страховка от двойного применения: если сессия панорамирования успела
+      // появиться уже после распада жеста, ведёт она
+      !isPanning
     ) {
       const deltaX = event.clientX - gestureCollapsePan.lastX;
       const deltaY = event.clientY - gestureCollapsePan.lastY;

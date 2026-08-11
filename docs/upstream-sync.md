@@ -1,8 +1,58 @@
 # Синхронизация с upstream: контрольные точки
 
-> **Обновлено:** 2026-08-11
+> **Обновлено:** 2026-08-12
 
 Форк намеренно расходится с `excalidraw/excalidraw` — полный merge не делаем (см. `.claude/skills/sync-upstream/SKILL.md`). Этот файл — журнал разборов upstream: что уже рассмотрено и с каким исходом. **Перед новой синхронизацией читать таблицы ниже — коммиты из них повторно не разбирать.**
+
+---
+
+## Разбор 2026-08-12: волна 2 -- сужение `NonDeleted`
+
+**Ветка:** `sync/upstream-2026-08-wave2`. Гейт волны 1 (живая приёмка жестов на iPad) пройден.
+
+### Принято (2)
+
+| upstream SHA | Коммит                                                            |
+| ------------ | ----------------------------------------------------------------- |
+| `dd8296af1`  | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) |
+| `e9c856d26`  | chore(editor): streamline getSelectedElementsByGroup (#11636)     |
+
+Обе строки раньше стояли в таблице отклонённых («цена выше пользы» / «chore-рефактор») -- взяты сознательно: #11470 это инфраструктура, разблокирующая #11636 и #11777.
+
+Итог: 82 файла, +924 / -589.
+
+### [!] 11 отладочных `console.error` из #11470 вырезаны
+
+Upstream добавил 11 логов вида `[NONDELETED][INVARIANT] ...` с комментарием «SAFETY: this should never happen». **У нас они срабатывали бы штатно:** в collab-сессии удалённый элемент живёт в сцене как тумбстоун (`isDeleted: true`), и путь через `getSelectedElements`/`restore`/`updateBoundElements` его законно встречает. У upstream в демо-приложении этого сценария нет, поэтому лог там и правда «никогда».
+
+Снимался **весь гвард**, а не только строка лога -- иначе оставался пустой `if`, который валит `--max-warnings=0`. В четырёх файлах после этого осиротел импорт `isNonDeletedElement` (`duplicate.ts`, `textElement.ts`, `actionProperties.tsx`, `restore.ts`) -- снят.
+
+### Ручные резолвы (5 конфликтов)
+
+- `packages/excalidraw/tests/freedrawMode.test.tsx` -- `modify/delete`, файла в форке нет. `git update-index --force-remove` (приём из граблей прошлого прохода).
+- `selection.ts` -- наш комментарий про импорт из барреля против пустоты upstream; взята наша сторона.
+- `actionProperties.tsx` -- upstream тянул `StrokeVariability` из непринятого #11507. Проверка «сколько раз символ встречается в файле» разделила: `NonDeleted` + `NonDeletedExcalidrawElement` реально используются (7 мест), `StrokeVariability` -- только в самой строке импорта, отброшен.
+- `arrows/focus.ts` -- взяты обе стороны (`FixedPointBinding` наш, `NonDeleted` приехал с патчем).
+- `App.tsx`, два блока -- взята наша сторона: `iframeLikes` у нас типизирован `ExcalidrawIframeLikeElement`, потому что в него кладётся то, что прошло `isIframeLikeElement`; upstream-овский узкий `ExcalidrawIframeElement` уронил бы tsc. Второй блок -- наш гвард `!isIframeLikeElement(element)` из #11662.
+
+### Хвосты сужения типа, которые поймал только tsc (3)
+
+Сужение `NonDeleted<T>` до `isDeleted: false` разъехалось с нашим кодом в трёх местах `App.tsx`:
+
+- `animateStraighten(element)` -- параметр сужен до `NonDeleted<ExcalidrawFreeDrawElement>`, каст на месте вызова обновлён. Аргумент и так `state.newElement`, то есть заведомо не удалён.
+- `_handleWireframeVertexDrag` -- `this.scene.getElement()` отдаёт возможно-удалённый элемент, а `LinearElementEditor.movePoints` теперь его не принимает. В гвард добавлен `!isNonDeletedElement(element)`: тянуть вершину удалённого нечего, жест сбрасывается.
+
+[!] Обе правки -- в нашем собственном коде (выпрямление freedraw, каркасные вершины), которого у upstream нет. **Цена сужения типа ложится не на портируемый патч, а на форковые фичи** -- это и есть та «цена выше пользы», из-за которой коммит откладывали. Оценивать её заранее по числу конфликтов нельзя: конфликтов было 5, а работы -- 5 резолвов плюс 3 невидимых до tsc хвоста.
+
+### Гейты
+
+| Гейт | Результат |
+| --- | --- |
+| `yarn test:typecheck` | [OK] чисто |
+| `yarn build:packages` | [OK] чисто |
+| `yarn test:code` (eslint `--max-warnings=0`) | [OK] чисто (было 4 ошибки -- их снял `9734c9a20`) |
+| `yarn test:app` (binding + history) | 76 failed / 10 passed / 88 -- **ровно baseline `master`** |
+| Тач-стенд (5 файлов) | 53/53 [OK], `tabletInputPolicy` 37/37 |
 
 ---
 
@@ -77,7 +127,7 @@ ellipse:   hullFillRatio PI/4,  cornerTurnShare 0.55, kurtosisProduct 2.25
 
 Прежняя формулировка «новая UI-фича, у нас отсутствует» неточна: `FollowMode` в форке **есть** (`components/FollowMode/FollowMode.tsx`), и #11819 — рефакторинг именно его. Цена ~23 хунка, самые неприятные в `MobileMenu.tsx` и `pointer-events` рядом с нашим `MobileToolbar`, плюс обязательная парная правка `use-yjs-follow.ts` в billion-dollars просто чтобы сохранить текущее поведение (иначе `requestUnfollow()` становится no-op). Брать целиком и одним релизом при следующем касании follow-режима.
 
-### Что дальше (волна 2, НЕ начата)
+### Что дальше (волна 2 — **СДЕЛАНА 12.08**, см. раздел выше)
 
 `dd8296af1` (#11470, `NonDeleted` -> `isDeleted: false`, 81 файл) -> `e9c856d26` (#11636). Прямой пользы пользователю ноль; смысл — инфраструктура и разблокировка #11636/#11777.
 
@@ -205,9 +255,11 @@ ellipse:   hullFillRatio PI/4,  cornerTurnShare 0.55, kurtosisProduct 2.25
 
 ---
 
-## Отклонено с обоснованием (28)
+## Отклонено с обоснованием (28 на 10.08, из них 5 позже приняты)
 
 Разобраны поштучно. Это **решение, а не «не осилили»** — при следующей синхронизации их не перебирать заново, если не изменилось основание (например, если решим завести у себя viewport API или новый тулбар).
+
+Число в заголовке — итог прохода 10.08 и не меняется задним числом. Строки, принятые позже, зачёркнуты и помечены датой: 3 в волне 1 (11.08), 2 в волне 2 (12.08). **Актуально отклонённых: 23.**
 
 Сгруппировано по причинам:
 
@@ -225,7 +277,7 @@ ellipse:   hullFillRatio PI/4,  cornerTurnShare 0.55, kurtosisProduct 2.25
 | --- | --- | --- | --- |
 | `4872083c0` | feat(editor): bucketfill cursor + eyedropper support (#11849) | 0 | Новая фича рисования; тянет файлы, которых в форке нет |
 | ~~`5b0f5a4c2`~~ | ~~fix(editor): revert viewport animation back to 500ms (#11600)~~ |  | **ПРИНЯТ 11.08**, см. раздел ниже |
-| `e9c856d26` | chore(editor): streamline getSelectedElementsByGroup (#11636) | 2 | chore-рефактор без функциональной пользы |
+| ~~`e9c856d26`~~ | ~~chore(editor): streamline getSelectedElementsByGroup (#11636)~~ |  | **ПРИНЯТ 12.08** (волна 2) |
 | `b2e81e38a` | feat(editor): `autoshape` text + line improvements (#11752) | 2 | Новая фича рисования; тянет файлы, которых в форке нет |
 | `1da120e91` | fix(editor): include custom tools in pointer capture (#11826) | 2 | Переписывает публичный API и тулбар — конфликт с нашим кастомным тулбаром |
 | ~~`51ca8abde`~~ | ~~feat(packages/excalidraw): viewport locking (#11554)~~ |  | **ПРИНЯТ 11.08**, см. раздел ниже |
@@ -237,7 +289,7 @@ ellipse:   hullFillRatio PI/4,  cornerTurnShare 0.55, kurtosisProduct 2.25
 | `d331bb49f` | fix(editor): avoid overlap of flowchart children (#11532) | 5 | Flowchart-фича, в нашем сценарии не используется |
 | `a1d9b16b0` | fix(editor): show scroll-back-to-content button on mobile (#11680) | 5 | **Обоснование переформулировано 11.08:** у нас нет этого бага. Upstream сломал кнопку сам в #11677, загейтив bottom bar на `defaultUIEnabled`; в нашем `MobileMenu.tsx` кнопка живёт без гейта, по `appState.scrolledOutside`. Применение = no-op плюс конфликт с сигнатурой нашего `MobileToolbar` |
 | `1acf66eda` | feat(editor): bind text to hovered arrow endpoint (#11777) | 6 | Зависит от непринятой цепочки привязок |
-| `dd8296af1` | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) | 6 | Типовой рефактор по 81 файлу — цена выше пользы |
+| ~~`dd8296af1`~~ | ~~fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470)~~ |  | **ПРИНЯТ 12.08** (волна 2). Оценка «цена выше пользы» подтвердилась в части цены: 5 резолвов + 3 хвоста, видимых только tsc, причём все три — в форковых фичах |
 | `cd514d72d` | feat(editor): LaserPointer based freedraw (#11507) | 7 | Новая фича рисования; тянет файлы, которых в форке нет |
 | `ba0387d18` | chore(editor): Update translations from Crowdin (#10731) | 7 | Переводы Crowdin — у нас свои локали |
 | `ed7c0c1d7` | chore(editor): Refactor Actions for clarity (#11632) | 8 | chore-рефактор без функциональной пользы |

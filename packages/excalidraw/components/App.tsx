@@ -52,6 +52,7 @@ import {
   VERTICAL_ALIGN,
   YOUTUBE_STATES,
   ZOOM_STEP,
+  MIN_ZOOM,
   POINTER_EVENTS,
   TOOL_TYPE,
   supportsResizeObserver,
@@ -271,7 +272,6 @@ import {
   getPolyPresetXOffset,
   isEligibleFrameChildType,
   getBindingStrategyForDraggingBindingElementEndpoints,
-  parseElementLinkFromURL,
 } from "@excalidraw/element";
 
 import type { GlobalPoint, LocalPoint, Radians } from "@excalidraw/math";
@@ -299,6 +299,7 @@ import type {
   ExcalidrawArrowElement,
   ExcalidrawElbowArrowElement,
   SceneElementsMap,
+  NonDeletedSceneElementsMap,
   ExcalidrawBindableElement,
 } from "@excalidraw/element/types";
 
@@ -387,7 +388,7 @@ import { History } from "../history";
 import { defaultLang, getLanguage, languages, setLanguage, t } from "../i18n";
 
 import {
-  calculateScrollCenter,
+  getScrollToContentState,
   getElementsWithinSelection,
   getNormalizedZoom,
   getSelectedElements,
@@ -434,10 +435,15 @@ import {
 } from "../snapping";
 import { Renderer } from "../scene/Renderer";
 import {
-  type ScrollToContentOptions,
+  type SetViewportOptions,
   SCROLL_TO_CONTENT_ANIMATION_KEY,
-  scrollToElements,
-} from "../scroll";
+  setViewportToBounds,
+  resolveViewportTarget,
+  getConstrainedTargetViewport,
+  constrainScrollState,
+  animateToConstraints,
+  isViewportOverscrolled,
+} from "../viewport";
 import {
   setEraserCursor,
   setCursor,
@@ -523,12 +529,28 @@ import type {
   GenerateDiagramToCode,
   NullableGridSize,
   Offsets,
+  ViewportOffsets,
+  ViewportOffsetsOptions,
+  ViewportUIDock,
+  ViewportUIName,
 } from "../types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Action, ActionResult } from "../actions/types";
 
 const AppContext = React.createContext<AppClassProperties>(null!);
 const AppPropsContext = React.createContext<AppProps>(null!);
+
+/** single source of truth for the `--right-sidebar-width` CSS variable */
+const RIGHT_SIDEBAR_WIDTH = 302;
+
+/**
+ * Approximate styles panel footprints (panel width + editor edge inset),
+ * used by `getViewportOffsets` to reserve space for the panel before it was
+ * ever rendered (= measured). Keep roughly in sync with the CSS
+ * (`.App-menu__left` width / `.compact-shape-actions-island` min-width +
+ * `--editor-container-padding`).
+ */
+const STYLES_PANEL_APPROX_WIDTH = { full: 216, compact: 64 };
 
 const editorInterfaceContextInitialValue: EditorInterface = {
   formFactor: "desktop",
@@ -688,11 +710,105 @@ const YOUTUBE_VIDEO_STATES = new Map<
 
 const MAX_EMBEDDABLE_VIEWPORT_SCALE = 4;
 
+/** how long after the last pan/zoom we animate the rubberband back into the
+ * scroll constraints box */
+const SCROLL_CONSTRAINTS_SNAP_BACK_DELAY = 200;
+
 let IS_PLAIN_PASTE = false;
 let IS_PLAIN_PASTE_TIMER = 0;
 let PLAIN_PASTE_TOAST_SHOWN = false;
 
-let lastPointerUp: (() => void) | null = null;
+// принимает событие, чтобы получатель мог решить, его ли это указатель:
+// ручная уборка при новом pointerdown обязана НЕ рвать чужую сессию пана
+let lastPointerUp: ((event?: Event | null) => void) | null = null;
+
+/**
+ * Двупальцевый жест, посчитанный по touchmove.
+ *
+ * pointer-события приходят ПО ОДНОМУ на палец: в любой момент координата
+ * одного пальца свежая, второго -- отставшая на шаг. Расстояние между
+ * пальцами поэтому «дышит» даже при строго параллельном переносе, и зум
+ * дрожит на четверть при сдвиге вдоль линии пальцев. TouchEvent несёт ВСЕ
+ * касания разом, обе координаты всегда одновременны -- преобразование
+ * получается точным.
+ *
+ * Учёт самих пальцев остаётся за pointer-событиями (`gesture.pointers`):
+ * на нём держатся палм-режекция и предохранитель, отключающий на iPad
+ * собственный `gesturechange` Safari. Здесь меняется только то, КТО считает
+ * преобразование.
+ */
+const touchGesture: {
+  driving: boolean;
+  /**
+   * Идентификаторы пальцев, ведущих жест. Точка отсчёта пересчитывается,
+   * как только пара сменилась -- на это полагаться надёжнее, чем на приход
+   * `touchend`: он теряется (уход в фон, системный жест, перехват браузером),
+   * и тогда следующий жест считался бы от чужой базы.
+   */
+  ids: string | null;
+  lastCenter: { x: number; y: number } | null;
+  initialDistance: number | null;
+  initialScale: number | null;
+  /** жест сейчас масштабирует (иначе -- чистое перемещение) */
+  zooming: boolean;
+  /** расстояние, от которого отсчитывается намерение начать зумить */
+  anchorDistance: number | null;
+  lastDistance: number | null;
+  /** сколько кадров подряд расстояние держится ровно */
+  settledFrames: number;
+} = {
+  driving: false,
+  ids: null,
+  lastCenter: null,
+  initialDistance: null,
+  initialScale: null,
+  zooming: false,
+  anchorDistance: null,
+  lastDistance: null,
+  settledFrames: 0,
+};
+
+const resetTouchGesture = () => {
+  touchGesture.driving = false;
+  touchGesture.ids = null;
+  touchGesture.lastCenter = null;
+  touchGesture.initialDistance = null;
+  touchGesture.initialScale = null;
+  touchGesture.zooming = false;
+  touchGesture.anchorDistance = null;
+  touchGesture.lastDistance = null;
+  touchGesture.settledFrames = 0;
+};
+
+/**
+ * Насколько должно измениться расстояние между пальцами, чтобы жест признали
+ * масштабированием, в экранных пикселях.
+ *
+ * Отсчёт ведётся от якоря, а не покадрово: дрожание руки колеблется вокруг
+ * якоря и порога не берёт, а осознанный пинч набирает смещение за кадр-два.
+ * Порог абсолютный, потому что тремор по амплитуде почти не зависит от того,
+ * насколько широко разведены пальцы.
+ */
+const ZOOM_ENGAGE_PX = 10;
+/** покадровое изменение расстояния, ниже которого считаем, что пинч замер */
+const ZOOM_SETTLE_PX = 1.5;
+/** сколько замерших кадров подряд возвращают жест в режим перемещения */
+const ZOOM_SETTLE_FRAMES = 3;
+
+/**
+ * Жест распался с двух пальцев до одного -- оставшийся палец продолжает
+ * панорамировать до отрыва, независимо от активного инструмента.
+ *
+ * Иначе он бесполезен: рисование ему отменили в момент появления второго
+ * пальца, а сессии панорамирования у него нет (она заводится только под
+ * рукой/pen mode/просмотром). Палец лежит на экране и не делает ничего --
+ * холст замирает до полного отрыва.
+ */
+let gestureCollapsePan: {
+  pointerId: number;
+  lastX: number;
+  lastY: number;
+} | null = null;
 const gesture: Gesture = {
   pointers: new Map(),
   lastCenter: null,
@@ -719,12 +835,25 @@ class App extends React.Component<AppProps, AppState> {
     editorInterfaceContextInitialValue,
   );
 
+  /**
+   * Last-measured footprints of named viewport UI surfaces
+   * (`data-viewport-ui-name`), so `getViewportOffsets` can reserve space
+   * for them while they're hidden.
+   */
+  private viewportUILastMeasured = new Map<
+    ViewportUIName,
+    { side: "left" | "right"; offset: number }
+  >();
+
   private excalidrawContainerRef = React.createRef<HTMLDivElement>();
 
   public scene: Scene;
   public fonts: Fonts;
   public renderer: Renderer;
   public visibleElements: readonly NonDeletedExcalidrawElement[];
+  /** whether the last render had any renderable elements (excludes e.g. the
+   * in-progress `newElement` and the edited text element) */
+  private hasRenderableElements: boolean = false;
   private resizeObserver: ResizeObserver | undefined;
   public library: AppClassProperties["library"];
   public libraryItemsFromStorage: LibraryItems | undefined;
@@ -875,7 +1004,8 @@ class App extends React.Component<AppProps, AppState> {
         undo: () => this.actionManager.executeAction(this.undoAction, "api"),
         redo: () => this.actionManager.executeAction(this.redoAction, "api"),
       },
-      scrollToContent: this.scrollToContent,
+      setViewport: this.setViewport,
+      getViewportOffsets: this.getViewportOffsets,
       getSceneElements: this.getSceneElements,
       getAppState: () => this.state,
       getFiles: () => this.files,
@@ -2221,7 +2351,7 @@ class App extends React.Component<AppProps, AppState> {
     const { renderTopRightUI, renderTopLeftUI, renderCustomStats } = this.props;
 
     const {
-      elementsMap,
+      elementsMap: renderableElementsMap,
       visibleElements,
       canvasNonce,
       /**
@@ -2245,6 +2375,7 @@ class App extends React.Component<AppProps, AppState> {
       frameToHighlight: this.state.frameToHighlight,
     });
     this.visibleElements = visibleElements;
+    this.hasRenderableElements = renderableElementsMap.size > 0;
 
     const allElementsMap = this.scene.getNonDeletedElementsMap();
 
@@ -2283,7 +2414,7 @@ class App extends React.Component<AppProps, AppState> {
           ["--ui-pointerEvents" as any]: shouldBlockPointerEvents
             ? POINTER_EVENTS.disabled
             : POINTER_EVENTS.enabled,
-          ["--right-sidebar-width" as any]: "302px",
+          ["--right-sidebar-width" as any]: `${RIGHT_SIDEBAR_WIDTH}px`,
         }}
         ref={this.excalidrawContainerRef}
         onDrop={this.handleAppOnDrop}
@@ -2380,7 +2511,7 @@ class App extends React.Component<AppProps, AppState> {
                             isMagicFrameElement(firstSelectedElement) && (
                               <ElementCanvasButtons
                                 element={firstSelectedElement}
-                                elementsMap={elementsMap}
+                                elementsMap={renderableElementsMap}
                               >
                                 <ElementCanvasButton
                                   title={t("labels.convertToCode")}
@@ -2401,7 +2532,7 @@ class App extends React.Component<AppProps, AppState> {
                               ?.status === "done" && (
                               <ElementCanvasButtons
                                 element={firstSelectedElement}
-                                elementsMap={elementsMap}
+                                elementsMap={renderableElementsMap}
                               >
                                 <ElementCanvasButton
                                   title={t("labels.copySource")}
@@ -2464,7 +2595,7 @@ class App extends React.Component<AppProps, AppState> {
                           <StaticCanvas
                             canvas={this.canvas}
                             rc={this.rc}
-                            elementsMap={elementsMap}
+                            elementsMap={renderableElementsMap}
                             allElementsMap={allElementsMap}
                             visibleElements={visibleElements}
                             canvasNonce={canvasNonce}
@@ -2494,7 +2625,7 @@ class App extends React.Component<AppProps, AppState> {
                               newElement={newElementCanvasElement}
                               scale={window.devicePixelRatio}
                               rc={this.rc}
-                              elementsMap={elementsMap}
+                              elementsMap={renderableElementsMap}
                               allElementsMap={allElementsMap}
                               renderConfig={{
                                 imageCache: this.imageCache,
@@ -2515,7 +2646,7 @@ class App extends React.Component<AppProps, AppState> {
                             app={this}
                             containerRef={this.excalidrawContainerRef}
                             canvas={this.interactiveCanvas}
-                            elementsMap={elementsMap}
+                            elementsMap={renderableElementsMap}
                             visibleElements={visibleElements}
                             allElementsMap={allElementsMap}
                             selectedElements={selectedElements}
@@ -3110,16 +3241,44 @@ class App extends React.Component<AppProps, AppState> {
       toast: this.state.toast,
     };
 
-    if (initialData?.scrollToContent) {
+    const viewportAppState = {
+      ...restoredAppState,
+      width: this.state.width,
+      height: this.state.height,
+      offsetTop: this.state.offsetTop,
+      offsetLeft: this.state.offsetLeft,
+    };
+    const initialViewport = this.props.initialState?.viewport;
+
+    if (initialViewport) {
+      const restoredNonDeletedElements = restoredElements.filter(
+        (element) => !element.isDeleted,
+      ) as readonly NonDeletedExcalidrawElement[];
+      const restoredElementsMap = arrayToMap(
+        restoredNonDeletedElements,
+      ) as NonDeletedSceneElementsMap;
+
+      const { bounds } = resolveViewportTarget(
+        initialViewport.target,
+        restoredElementsMap,
+        viewportAppState,
+      );
+
+      if (bounds) {
+        restoredAppState = {
+          ...restoredAppState,
+          ...getConstrainedTargetViewport(viewportAppState, bounds, {
+            ...initialViewport,
+            // resolved here (post-mount) so ui-derived offsets measure the
+            // actually-rendered editor UI
+            offsets: this.resolveViewportOffsets(initialViewport.offsets),
+          }),
+        };
+      }
+    } else if (initialData?.scrollToContent) {
       restoredAppState = {
         ...restoredAppState,
-        ...calculateScrollCenter(restoredElements, {
-          ...restoredAppState,
-          width: this.state.width,
-          height: this.state.height,
-          offsetTop: this.state.offsetTop,
-          offsetLeft: this.state.offsetLeft,
-        }),
+        ...getScrollToContentState(restoredElements, viewportAppState),
       };
     }
 
@@ -3142,7 +3301,11 @@ class App extends React.Component<AppProps, AppState> {
     });
 
     if (isElementLink(window.location.href)) {
-      this.scrollToContent(window.location.href, { animate: false });
+      this.setViewport({
+        target: window.location.href,
+        fit: "scale-down",
+        animation: false,
+      });
     }
   };
 
@@ -3191,6 +3354,10 @@ class App extends React.Component<AppProps, AppState> {
 
     const prevStylesPanelMode = this.stylesPanelMode;
     this.stylesPanelMode = nextStylesPanelMode;
+
+    // the panel footprint differs between modes (compact vs full), so a
+    // measurement taken in the previous mode no longer applies
+    this.viewportUILastMeasured.delete("stylesPanel");
 
     if (prevStylesPanelMode !== "full" && nextStylesPanelMode === "full") {
       this.setState((prevState) => ({
@@ -3707,6 +3874,21 @@ class App extends React.Component<AppProps, AppState> {
       }
     }
 
+    // Forced false while a viewport animation runs — the scroll-back-to-content
+    // button must not render mid-animation (clicking it would fight the
+    // animation, which overwrites the viewport every frame). The animation's
+    // final commit lands after the animation is unregistered, settling this
+    // on the target viewport.
+    const scrolledOutside =
+      // hide when editing text
+      this.state.editingTextElement ||
+      AnimationController.running(SCROLL_TO_CONTENT_ANIMATION_KEY)
+        ? false
+        : !this.visibleElements.length && this.hasRenderableElements;
+    if (this.state.scrolledOutside !== scrolledOutside) {
+      this.setState({ scrolledOutside });
+    }
+
     this.store.commit(elementsMap, this.state);
 
     // Do not notify consumers if we're still loading the scene. Among other
@@ -3729,20 +3911,10 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   private renderInteractiveSceneCallback = ({
-    atLeastOneVisibleElement,
     scrollBars,
-    elementsMap,
   }: RenderInteractiveSceneCallback) => {
     if (scrollBars) {
       currentScrollBars = scrollBars;
-    }
-    const scrolledOutside =
-      // hide when editing text
-      this.state.editingTextElement
-        ? false
-        : !atLeastOneVisibleElement && elementsMap.size > 0;
-    if (this.state.scrolledOutside !== scrolledOutside) {
-      this.setState({ scrolledOutside });
     }
 
     this.scheduleImageRefresh();
@@ -3794,6 +3966,12 @@ class App extends React.Component<AppProps, AppState> {
     if (isIOS) {
       event.preventDefault();
     }
+
+    // Смена состава касаний -- всегда новая точка отсчёта для двупальцевого
+    // жеста. Полагаться только на `touchend` нельзя: он теряется при уходе в
+    // фон и системных жестах, и тогда следующий жест считался бы от чужой
+    // базы, давая скачок в первый же кадр.
+    resetTouchGesture();
 
     // Two-finger double-tap undo detection. Only direct (non-stylus) touches
     // count, and we never arm while a pen is on the surface -- a palm resting
@@ -3930,6 +4108,11 @@ class App extends React.Component<AppProps, AppState> {
     } else {
       gesture.pointers.clear();
       activePenPointerIds.clear();
+    }
+
+    // пальцев меньше двух -- touch-путь больше не ведёт жест
+    if (event.touches.length < 2) {
+      resetTouchGesture();
     }
   };
 
@@ -4159,7 +4342,7 @@ class App extends React.Component<AppProps, AppState> {
     files: BinaryFiles | null;
     position: { clientX: number; clientY: number } | "cursor" | "center";
     retainSeed?: boolean;
-    fitToContent?: boolean;
+    fit?: SetViewportOptions["fit"];
     preserveFrameChildrenOrder?: boolean;
   }) => {
     const elements = restoreElements(opts.elements, null, {
@@ -4286,10 +4469,12 @@ class App extends React.Component<AppProps, AppState> {
     );
     this.setActiveTool({ type: this.state.preferredSelectionTool.type }, true);
 
-    if (opts.fitToContent) {
-      this.scrollToContent(duplicatedElements, {
-        fitToContent: true,
-        canvasOffsets: this.getEditorUIOffsets(),
+    if (opts.fit) {
+      this.setViewport({
+        target: duplicatedElements,
+        fit: opts.fit,
+        animation: false,
+        offsets: { ui: true },
       });
     }
   };
@@ -4481,7 +4666,36 @@ class App extends React.Component<AppProps, AppState> {
     if (event.pointerType === "pen") {
       activePenPointerIds.delete(event.pointerId);
     }
+
+    const wasMultiTouchGesture = gesture.pointers.size >= 2;
     gesture.pointers.delete(event.pointerId);
+
+    if (wasMultiTouchGesture && gesture.pointers.size === 1 && !isPanning) {
+      // Передаём панорамирование оставшемуся пальцу (см. gestureCollapsePan).
+      //
+      // [!] Только если настоящей сессии панорамирования НЕТ. Под рукой,
+      // pen mode и просмотром она есть и переживает жест -- тогда сдвиг
+      // применили бы дважды, и холст ехал бы вдвое быстрее пальца.
+      const [[pointerId, coords]] = [...gesture.pointers.entries()];
+      gestureCollapsePan = { pointerId, lastX: coords.x, lastY: coords.y };
+    } else if (
+      gestureCollapsePan?.pointerId === event.pointerId ||
+      gesture.pointers.size === 0
+    ) {
+      gestureCollapsePan = null;
+    }
+
+    // the multi-touch viewport gesture just disengaged: release the
+    // rubberband that was withheld while it was active
+    // (see `snapBackToScrollConstraints`)
+    if (
+      wasMultiTouchGesture &&
+      gesture.pointers.size < 2 &&
+      this.state.scrollConstraints
+    ) {
+      this.snapBackToScrollConstraintsDebounced.cancel();
+      this.snapBackToScrollConstraints();
+    }
   };
 
   toggleLock = (source: "keyboard" | "ui" = "ui") => {
@@ -4554,41 +4768,87 @@ class App extends React.Component<AppProps, AppState> {
      */
     value: number,
   ) => {
-    this.setState({
-      ...getStateForZoom(
-        {
-          viewportX: this.state.width / 2 + this.state.offsetLeft,
-          viewportY: this.state.height / 2 + this.state.offsetTop,
-          nextZoom: getNormalizedZoom(value),
-        },
-        this.state,
-      ),
+    this.setState((state) => {
+      const nextState = {
+        ...state,
+        ...getStateForZoom(
+          {
+            viewportX: state.width / 2 + state.offsetLeft,
+            viewportY: state.height / 2 + state.offsetTop,
+            nextZoom: getNormalizedZoom(value),
+          },
+          state,
+        ),
+      };
+      // re-clamp so a programmatic zoom can't escape an active scroll/zoom lock
+      return { ...nextState, ...constrainScrollState(nextState) };
     });
   };
 
-  scrollToContent = (
-    target?:
-      | string
-      | ExcalidrawElement
-      | readonly NonDeletedExcalidrawElement[],
-    opts?: ScrollToContentOptions,
-  ) => {
-    let elements: readonly NonDeleted<ExcalidrawElement>[];
-    if (typeof target === "string") {
-      const id = isElementLink(target)
-        ? parseElementLinkFromURL(target)
-        : target;
-      elements = id ? this.scene.getElementsFromId(id) : [];
-    } else if (Array.isArray(target)) {
-      elements = target;
-    } else if (target) {
-      elements = [target as NonDeleted<ExcalidrawElement>];
-    } else {
-      elements = this.scene.getNonDeletedElements();
+  /**
+   * Navigates the viewport to a target and, optionally, locks pan/zoom to it.
+   * The resolved target box drives both the navigation (pan + zoom per
+   * `fit`) and the lock: the operations chain — the viewport animates onto
+   * the target, then the lock is installed against the settled viewport.
+   *
+   * Passing `null` clears any active lock without navigating.
+   */
+  /**
+   * Resolves user-supplied viewport offsets ({@link ViewportOffsets}) into
+   * concrete per-side pixel values: static sides are used as-is, and when
+   * `ui` is set, the remaining sides are derived from the currently
+   * rendered editor UI (via `getViewportOffsets`).
+   *
+   * Must be called at the time the offsets are applied (not e.g. cached at
+   * props-definition time), so the UI-derived values reflect the actual
+   * rendered UI.
+   */
+  private resolveViewportOffsets = (
+    offsets: ViewportOffsets | undefined,
+  ): Offsets | undefined => {
+    if (!offsets) {
+      return offsets;
     }
 
-    if (!elements.length) {
-      if (typeof target === "string" && isElementLink(target)) {
+    const { ui, ...staticOffsets } = offsets;
+
+    if (!ui) {
+      return staticOffsets;
+    }
+
+    const uiOffsets = this.getViewportOffsets(ui === true ? undefined : ui);
+
+    // static sides win over the ui-derived values (incl. `ui`'s own
+    // side overrides)
+    return {
+      top: staticOffsets.top ?? uiOffsets.top,
+      right: staticOffsets.right ?? uiOffsets.right,
+      bottom: staticOffsets.bottom ?? uiOffsets.bottom,
+      left: staticOffsets.left ?? uiOffsets.left,
+    };
+  };
+
+  setViewport = (opts: SetViewportOptions | null) => {
+    // `null` clears all active locks
+    if (opts === null) {
+      if (this.state.scrollConstraints) {
+        this.setState({ scrollConstraints: null });
+      }
+      return;
+    }
+
+    const { target, fit, lock, animation } = opts;
+    const offsets = this.resolveViewportOffsets(opts.offsets);
+
+    // resolve the target to a scene-coordinate box.
+    const { bounds, type } = resolveViewportTarget(
+      target,
+      this.scene.getNonDeletedElementsMap(),
+      this.state,
+    );
+
+    if (!bounds) {
+      if (type === "link") {
         this.setState({
           toast: {
             message: t("elementLink.notFound"),
@@ -4597,28 +4857,36 @@ class App extends React.Component<AppProps, AppState> {
           },
         });
       }
-
       return;
     }
 
-    // Navigating to an element by id or element-link defaults to zooming the
-    // element into view, animated — matching the historical element-link
-    // behavior — unless the caller opts out.
-    const resolvedOpts =
-      typeof target === "string"
-        ? {
-            ...opts,
-            fitToViewport: undefined,
-            fitToContent: opts?.fitToContent ?? true,
-            animate: opts?.animate ?? true,
-          }
-        : opts;
+    // capture the viewport we'll land on now, so the lock can be installed
+    // against the intended final state even if the last animation frame hasn't
+    // committed yet.
+    const viewportUpdate = getConstrainedTargetViewport(this.state, bounds, {
+      fit,
+      offsets,
+      lock,
+    });
 
-    scrollToElements(
+    // chain: once the scroll/zoom has settled, install (or clear) the lock
+    const installLock = () => {
+      if (!viewportUpdate.scrollConstraints && !this.state.scrollConstraints) {
+        // no lock requested and none to supersede
+        return;
+      }
+
+      flushSync(() => {
+        this.setState(viewportUpdate);
+      });
+    };
+
+    setViewportToBounds(
       this.state,
-      elements,
+      bounds,
+      { fit, animation, offsets },
       this.setState.bind(this),
-      resolvedOpts,
+      installLock,
     );
   };
 
@@ -4629,14 +4897,78 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   /** use when changing scrollX/scrollY/zoom based on user interaction */
-  private translateCanvas: React.Component<any, AppState>["setState"] = (
-    state,
+  private translateCanvas = <K extends keyof AppState>(
+    state:
+      | AppState
+      | Pick<AppState, K>
+      | null
+      | ((
+          prevState: Readonly<AppState>,
+          props: Readonly<AppProps>,
+        ) => AppState | Pick<AppState, K> | null),
+    opts?: {
+      /** set when the caller has already hard-clamped the update's zoom
+       * component against the scroll lock — the update then gets the pan
+       * rubberband give instead of the zoom hard clamp (see the touch
+       * pinch handler, which composes both in one update) */
+      zoomPreConstrained?: boolean;
+    },
   ) => {
     AnimationController.cancel(SCROLL_TO_CONTENT_ANIMATION_KEY);
     this.setState({ shouldCacheIgnoreZoom: false });
     this.maybeUnfollowRemoteUser();
+
+    const prevZoom = this.state.zoom.value;
     this.setState(state);
+
+    // constrain against the scroll lock; queued so it sees the update above
+    this.setState((prevState) => {
+      if (!prevState.scrollConstraints) {
+        return null;
+      }
+      // zoom changes are hard-clamped (no rubberband give): the post-zoom
+      // scroll is a continuous function of the zoom origin, so clamping it
+      // effectively slides the origin to the nearest focal point that keeps
+      // the viewport within bounds — zooming glides along the lock edge
+      // instead of overscrolling and snapping back on every zoom tick.
+      // Panning keeps the soft give, snapping back once interaction settles.
+      const zoomed =
+        !opts?.zoomPreConstrained && prevState.zoom.value !== prevZoom;
+      const overscroll = zoomed ? 0 : prevState.scrollConstraints.overscroll;
+      if (overscroll > 0) {
+        this.snapBackToScrollConstraintsDebounced();
+      }
+      return constrainScrollState(prevState, overscroll);
+    });
   };
+
+  /** clamps scroll/zoom back into `appState.scrollConstraints` (no-op when
+   * unconstrained). Runs as a queued update, so it sees the preceding change.
+   * `overscroll` (screen px) relaxes the bounds for rubberbanding. */
+  private constrainViewportToScrollConstraints = (overscroll = 0) => {
+    this.setState((prevState) =>
+      prevState.scrollConstraints
+        ? constrainScrollState(prevState, overscroll)
+        : null,
+    );
+  };
+
+  /** animates an overscrolled viewport back inside the constraint box */
+  private snapBackToScrollConstraints = () => {
+    // withhold the rubberband while a multi-touch gesture is still engaged —
+    // snapping back mid-gesture (e.g. while holding a pinch or between
+    // two-finger pans) fights the user's fingers and reads as jerky. It is
+    // released on gesture end instead (see `removePointer`).
+    if (this.unmounted || gesture.pointers.size >= 2) {
+      return;
+    }
+    animateToConstraints(this.state, (viewport) => this.setState(viewport));
+  };
+
+  private snapBackToScrollConstraintsDebounced = debounce(
+    this.snapBackToScrollConstraints,
+    SCROLL_CONSTRAINTS_SNAP_BACK_DELAY,
+  );
 
   setToast = (toast: AppState["toast"]) => {
     this.setState({ toast });
@@ -4849,43 +5181,137 @@ class App extends React.Component<AppProps, AppState> {
     },
   );
 
-  public getEditorUIOffsets = (): Offsets => {
-    const toolbarBottom =
-      this.excalidrawContainerRef?.current
-        ?.querySelector(".App-toolbar")
-        ?.getBoundingClientRect()?.bottom ?? 0;
-    const sidebarRect = this.excalidrawContainerRef?.current
-      ?.querySelector(".sidebar")
-      ?.getBoundingClientRect();
-    const propertiesPanelRect = this.excalidrawContainerRef?.current
-      ?.querySelector(".App-menu__left")
-      ?.getBoundingClientRect();
+  /**
+   * top/right/bottom/left override the final offsets for those sides.
+   *
+   * Default side offsets are measured from the currently rendered UI
+   * surfaces marked with the `data-viewport-ui` attribute (see
+   * {@link ViewportUIDock}), plus padding.
+   *
+   * See {@link ViewportOffsetsOptions} for the individual options
+   * (padding, per-side overrides, reserving space for hidden surfaces).
+   */
+  public getViewportOffsets = (opts?: ViewportOffsetsOptions): Offsets => {
+    const excalidrawContainer = this.excalidrawContainerRef?.current;
+    const excalidrawContainerRect =
+      excalidrawContainer?.getBoundingClientRect();
+    const isRTL = getLanguage().rtl;
 
-    const PADDING = 16;
+    const measuredOffsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    const renderedSurfaces = new Set<ViewportUIName>();
 
-    return getLanguage().rtl
-      ? {
-          top: toolbarBottom + PADDING,
-          right:
-            Math.max(
-              this.state.width -
-                (propertiesPanelRect?.left ?? this.state.width),
-              0,
-            ) + PADDING,
-          bottom: PADDING,
-          left: Math.max(sidebarRect?.right ?? 0, 0) + PADDING,
-        }
-      : {
-          top: toolbarBottom + PADDING,
-          right: Math.max(
-            this.state.width -
-              (sidebarRect?.left ?? this.state.width) +
-              PADDING,
-            0,
-          ),
-          bottom: PADDING,
-          left: Math.max(propertiesPanelRect?.right ?? 0, 0) + PADDING,
+    if (excalidrawContainer && excalidrawContainerRect) {
+      for (const node of excalidrawContainer.querySelectorAll<HTMLElement>(
+        "[data-viewport-ui]",
+      )) {
+        const domRect = node.getBoundingClientRect();
+        // measured relative to the excalidraw container (which the offsets
+        // are relative to), so that embedding the editor at a viewport
+        // offset doesn't skew the values
+        const rect = {
+          top: domRect.top - excalidrawContainerRect.top,
+          right: domRect.right - excalidrawContainerRect.left,
+          bottom: domRect.bottom - excalidrawContainerRect.top,
+          left: domRect.left - excalidrawContainerRect.left,
+          width: domRect.width,
         };
+
+        // offsets start at 0, so surfaces translated off-canvas (e.g.
+        // zen-mode transitions) never contribute negative values
+        switch (node.dataset.viewportUi as ViewportUIDock) {
+          case "top":
+            measuredOffsets.top = Math.max(measuredOffsets.top, rect.bottom);
+            break;
+          case "bottom":
+            measuredOffsets.bottom = Math.max(
+              measuredOffsets.bottom,
+              this.state.height - rect.top,
+            );
+            break;
+          case "side": {
+            // which side a panel docks to is resolved from its rendered
+            // position (RTL / host-configured docking flip sides), by
+            // checking which half of the viewport its center sits in;
+            // the offset is then its intrusion depth from that edge
+            const [side, offset] =
+              rect.left + rect.width / 2 < this.state.width / 2
+                ? (["left", rect.right] as const)
+                : (["right", this.state.width - rect.left] as const);
+
+            measuredOffsets[side] = Math.max(measuredOffsets[side], offset);
+
+            const name = node.dataset.viewportUiName as
+              | ViewportUIName
+              | undefined;
+            if (name) {
+              renderedSurfaces.add(name);
+              // don't cache degenerate measurements (surface translated
+              // off-canvas, e.g. during zen-mode transitions)
+              if (offset > 0) {
+                this.viewportUILastMeasured.set(name, { side, offset });
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // reserve space for requested surfaces that aren't currently rendered,
+    // using their last-measured footprint (or an approximate default if
+    // they weren't rendered yet); no-op for currently-rendered surfaces
+    // (already measured above) and on phones
+    if (opts?.reserve && this.editorInterface.formFactor !== "phone") {
+      const reserveSurface = (
+        name: ViewportUIName,
+        fallback: { side: "left" | "right"; offset: number },
+      ) => {
+        if (renderedSurfaces.has(name)) {
+          return;
+        }
+        const { side, offset } =
+          this.viewportUILastMeasured.get(name) ?? fallback;
+        measuredOffsets[side] = Math.max(measuredOffsets[side], offset);
+      };
+
+      if (opts.reserve.stylesPanel) {
+        reserveSurface("stylesPanel", {
+          side: isRTL ? "right" : "left",
+          offset:
+            this.stylesPanelMode === "compact"
+              ? STYLES_PANEL_APPROX_WIDTH.compact
+              : STYLES_PANEL_APPROX_WIDTH.full,
+        });
+      }
+      if (opts.reserve.sidebar) {
+        reserveSurface("sidebar", {
+          side: isRTL ? "left" : "right",
+          offset: RIGHT_SIDEBAR_WIDTH,
+        });
+      }
+    }
+
+    const padding = opts?.padding ?? 24;
+    const topPadding = opts?.paddingTop ?? padding;
+    const rightPadding =
+      (isRTL ? opts?.paddingLeft : opts?.paddingRight) ?? padding;
+    const bottomPadding = opts?.paddingBottom ?? padding;
+    const leftPadding =
+      (isRTL ? opts?.paddingRight : opts?.paddingLeft) ?? padding;
+
+    const editorOffsets = {
+      top: measuredOffsets.top + topPadding,
+      right: measuredOffsets.right + rightPadding,
+      bottom: measuredOffsets.bottom + bottomPadding,
+      left: measuredOffsets.left + leftPadding,
+    };
+
+    return {
+      top: opts?.top ?? editorOffsets.top,
+      right: (isRTL ? opts?.left : opts?.right) ?? editorOffsets.right,
+      bottom: opts?.bottom ?? editorOffsets.bottom,
+      left: (isRTL ? opts?.right : opts?.left) ?? editorOffsets.left,
+    };
   };
 
   // Input handling
@@ -5036,14 +5462,14 @@ class App extends React.Component<AppProps, AppState> {
                 zoom: this.state.zoom,
               },
               this.scene.getNonDeletedElementsMap(),
-              this.getEditorUIOffsets(),
+              this.getViewportOffsets(),
             )
           ) {
-            this.scrollToContent(this.flowChartCreator.pendingNodes, {
-              animate: true,
-              duration: 300,
-              fitToContent: true,
-              canvasOffsets: this.getEditorUIOffsets(),
+            this.setViewport({
+              target: getCommonBounds(this.flowChartCreator.pendingNodes),
+              fit: "scale-down",
+              animation: { duration: 300 },
+              offsets: { ui: true },
             });
           }
 
@@ -5093,13 +5519,14 @@ class App extends React.Component<AppProps, AppState> {
                     zoom: this.state.zoom,
                   },
                   this.scene.getNonDeletedElementsMap(),
-                  this.getEditorUIOffsets(),
+                  this.getViewportOffsets(),
                 )
               ) {
-                this.scrollToContent(nextNode, {
-                  animate: true,
-                  duration: 300,
-                  canvasOffsets: this.getEditorUIOffsets(),
+                this.setViewport({
+                  target: nextNode,
+                  fit: "scale-down",
+                  animation: { duration: 300 },
+                  offsets: { ui: true },
                 });
               }
             }
@@ -5665,13 +6092,14 @@ class App extends React.Component<AppProps, AppState> {
                 zoom: this.state.zoom,
               },
               this.scene.getNonDeletedElementsMap(),
-              this.getEditorUIOffsets(),
+              this.getViewportOffsets(),
             )
           ) {
-            this.scrollToContent(firstNode, {
-              animate: true,
-              duration: 300,
-              canvasOffsets: this.getEditorUIOffsets(),
+            this.setViewport({
+              target: firstNode,
+              fit: "scale-down",
+              animation: { duration: 300 },
+              offsets: { ui: true },
             });
           }
         }
@@ -5875,9 +6303,15 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
 
+    // while rubberband-overscrolled past the scroll constraints, suppress
+    // zooming until the viewport has snapped back inside the box
+    if (isViewportOverscrolled(this.state)) {
+      return;
+    }
+
     const initialScale = gesture.initialScale;
     if (initialScale) {
-      this.setState((state) => ({
+      this.translateCanvas((state) => ({
         ...getStateForZoom(
           {
             viewportX: this.lastViewportPosition.x,
@@ -7130,6 +7564,9 @@ class App extends React.Component<AppProps, AppState> {
 
     const initialScale = gesture.initialScale;
     if (
+      // жест ведёт touch-путь (см. `touchGesture`) -- здесь молчим, иначе
+      // преобразование применится дважды
+      !touchGesture.driving &&
       gesture.pointers.size === 2 &&
       gesture.lastCenter &&
       initialScale &&
@@ -7151,6 +7588,17 @@ class App extends React.Component<AppProps, AppState> {
         : this.state.zoom.value;
 
       this.setState((state) => {
+        // constrain the zoom and pan components separately: the zoom step is
+        // hard-clamped against the scroll lock (sliding the focal point along
+        // the lock edge), while any pre-existing overscroll plus this frame's
+        // pan delta are re-applied on top and rubberband-clamped by
+        // `translateCanvas` — so pinch-zooming and overscroll-panning compose
+        // instead of the zoom yanking the viewport back inside the box.
+        const rest = constrainScrollState(state); // hard clamp (no give)
+        // pre-existing overscroll, in screen px (zoom-independent)
+        const overscrollX = (state.scrollX - rest.scrollX) * state.zoom.value;
+        const overscrollY = (state.scrollY - rest.scrollY) * state.zoom.value;
+
         const zoomState = getStateForZoom(
           {
             viewportX: center.x,
@@ -7159,16 +7607,23 @@ class App extends React.Component<AppProps, AppState> {
           },
           state,
         );
+        const zoomedViewport = constrainScrollState({ ...state, ...zoomState });
+        const zoomValue = zoomedViewport.zoom.value;
 
-        this.translateCanvas({
-          zoom: zoomState.zoom,
-          // 2x multiplier is just a magic number that makes this work correctly
-          // on touchscreen devices (note: if we get report that panning is slower/faster
-          // than actual movement, consider swapping with devicePixelRatio)
-          scrollX: zoomState.scrollX + 2 * (deltaX / nextZoom),
-          scrollY: zoomState.scrollY + 2 * (deltaY / nextZoom),
-          shouldCacheIgnoreZoom: true,
-        });
+        this.translateCanvas(
+          {
+            zoom: zoomedViewport.zoom,
+            // 2x multiplier is just a magic number that makes this work correctly
+            // on touchscreen devices (note: if we get report that panning is slower/faster
+            // than actual movement, consider swapping with devicePixelRatio)
+            scrollX:
+              zoomedViewport.scrollX + (overscrollX + 2 * deltaX) / zoomValue,
+            scrollY:
+              zoomedViewport.scrollY + (overscrollY + 2 * deltaY) / zoomValue,
+            shouldCacheIgnoreZoom: true,
+          },
+          { zoomPreConstrained: true },
+        );
 
         return null;
       });
@@ -7178,6 +7633,26 @@ class App extends React.Component<AppProps, AppState> {
         gesture.initialDistance =
         gesture.initialScale =
           null;
+    }
+
+    // жест распался до одного пальца -- он и продолжает панорамировать
+    if (
+      gestureCollapsePan &&
+      gestureCollapsePan.pointerId === event.pointerId &&
+      gesture.pointers.size < 2 &&
+      // страховка от двойного применения: если сессия панорамирования успела
+      // появиться уже после распада жеста, ведёт она
+      !isPanning
+    ) {
+      const deltaX = event.clientX - gestureCollapsePan.lastX;
+      const deltaY = event.clientY - gestureCollapsePan.lastY;
+      gestureCollapsePan.lastX = event.clientX;
+      gestureCollapsePan.lastY = event.clientY;
+
+      this.translateCanvas((state) => ({
+        scrollX: state.scrollX + deltaX / state.zoom.value,
+        scrollY: state.scrollY + deltaY / state.zoom.value,
+      }));
     }
 
     if (
@@ -7782,6 +8257,157 @@ class App extends React.Component<AppProps, AppState> {
   // set touch moving for mobile context menu
   private handleTouchMove = (event: React.TouchEvent<HTMLCanvasElement>) => {
     invalidateContextMenu = true;
+    this.driveGestureFromTouches(event.nativeEvent);
+  };
+
+  /**
+   * Считает двупальцевое преобразование по ОБЕИМ свежим координатам (см.
+   * `touchGesture`). Пока этот путь ведёт жест, ветка пинча в
+   * `handleCanvasPointerMove` молчит, иначе преобразование применилось бы дважды.
+   */
+  private driveGestureFromTouches = (event: TouchEvent) => {
+    const touches = Array.from(event.touches);
+
+    if (touches.length !== 2) {
+      resetTouchGesture();
+      return;
+    }
+
+    // Перо ведёт штрих, а не камеру. На iPadOS перо отличимо и в touch-пути
+    // (`touchType`, WebKit-only); `activePenPointerIds` -- вторая проверка:
+    // pointerdown на iOS приходит РАНЬШЕ touchstart, значит к этому моменту
+    // палм-режекция уже отработала.
+    if (
+      activePenPointerIds.size > 0 ||
+      touches.some(
+        (touch) =>
+          (touch as Touch & { touchType?: string }).touchType === "stylus",
+      )
+    ) {
+      resetTouchGesture();
+      return;
+    }
+
+    const center = {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    };
+    const distance = Math.hypot(
+      touches[0].clientX - touches[1].clientX,
+      touches[0].clientY - touches[1].clientY,
+    );
+
+    const ids = touches
+      .map((touch) => touch.identifier)
+      .sort((a, b) => a - b)
+      .join(":");
+
+    if (
+      !touchGesture.driving ||
+      touchGesture.ids !== ids ||
+      !touchGesture.lastCenter ||
+      !touchGesture.initialDistance ||
+      !touchGesture.initialScale
+    ) {
+      // первый кадр жеста задаёт точку отсчёта и ничего не двигает
+      touchGesture.driving = true;
+      touchGesture.ids = ids;
+      touchGesture.lastCenter = center;
+      touchGesture.initialDistance = distance || null;
+      touchGesture.initialScale = this.state.zoom.value;
+      touchGesture.zooming = false;
+      touchGesture.anchorDistance = distance;
+      touchGesture.lastDistance = distance;
+      touchGesture.settledFrames = 0;
+      return;
+    }
+
+    // Переключение «перемещение <-> масштабирование». Пока жест не признан
+    // масштабированием, зум заморожен -- дрожание пальцев в него не попадает
+    // вовсе. Признание происходит за кадр-два, а как только пинч замирает,
+    // жест возвращается к перемещению. На каждом переключении точка отсчёта
+    // пересчитывается, поэтому скачков нет.
+    const anchor = touchGesture.anchorDistance ?? distance;
+    const lastDistance = touchGesture.lastDistance ?? distance;
+
+    if (!touchGesture.zooming) {
+      if (Math.abs(distance - anchor) > ZOOM_ENGAGE_PX) {
+        touchGesture.zooming = true;
+        touchGesture.initialDistance = distance;
+        touchGesture.initialScale = this.state.zoom.value;
+        touchGesture.anchorDistance = distance;
+        touchGesture.settledFrames = 0;
+      }
+    } else if (Math.abs(distance - lastDistance) < ZOOM_SETTLE_PX) {
+      touchGesture.settledFrames += 1;
+      if (touchGesture.settledFrames >= ZOOM_SETTLE_FRAMES) {
+        touchGesture.zooming = false;
+        touchGesture.anchorDistance = distance;
+        touchGesture.settledFrames = 0;
+      }
+    } else {
+      touchGesture.settledFrames = 0;
+    }
+
+    touchGesture.lastDistance = distance;
+
+    const deltaX = center.x - touchGesture.lastCenter.x;
+    const deltaY = center.y - touchGesture.lastCenter.y;
+    touchGesture.lastCenter = center;
+
+    const scaleFactor = distance / touchGesture.initialDistance;
+    const zoomTarget =
+      touchGesture.zooming && scaleFactor
+        ? getNormalizedZoom(touchGesture.initialScale * scaleFactor)
+        : null;
+
+    let zoomChanged = false;
+
+    this.setState((state) => {
+      // та же композиция зума и пана, что в pointer-ветке: жёсткий кламп
+      // отдельно, накопленный overscroll поверх (см. `constrainScrollState`)
+      const rest = constrainScrollState(state);
+      const overscrollX = (state.scrollX - rest.scrollX) * state.zoom.value;
+      const overscrollY = (state.scrollY - rest.scrollY) * state.zoom.value;
+
+      // `zoomTarget === null` -- жест в режиме перемещения, масштаб заморожен
+      const zoomState = getStateForZoom(
+        {
+          viewportX: center.x,
+          viewportY: center.y,
+          nextZoom: zoomTarget ?? state.zoom.value,
+        },
+        state,
+      );
+      const zoomedViewport = constrainScrollState({ ...state, ...zoomState });
+      const zoomValue = zoomedViewport.zoom.value;
+
+      // [!] `shouldCacheIgnoreZoom` ставится ТОЛЬКО когда масштаб реально
+      // поехал. Он велит рисовать элементы из растрового кэша, снятого при
+      // другом масштабе, -- на пинче это оправданная экономия, а при чистом
+      // перемещении даёт мыло и «плывущую» картинку на ровном месте.
+      zoomChanged = zoomedViewport.zoom.value !== state.zoom.value;
+
+      this.translateCanvas(
+        {
+          zoom: zoomedViewport.zoom,
+          // [!] БЕЗ множителя 2 из pointer-ветки. Там он латает потерю одного
+          // из двух батченных обновлений (объектная форма setState, last-write
+          // -wins), а не геометрию. Здесь событие одно на кадр, терять нечего,
+          // и множитель дал бы двукратный перебег.
+          scrollX: zoomedViewport.scrollX + (overscrollX + deltaX) / zoomValue,
+          scrollY: zoomedViewport.scrollY + (overscrollY + deltaY) / zoomValue,
+          shouldCacheIgnoreZoom: zoomChanged,
+        },
+        { zoomPreConstrained: true },
+      );
+
+      return null;
+    });
+
+    if (zoomChanged) {
+      this.resetShouldCacheIgnoreZoomDebounced();
+    }
   };
 
   handleHoverSelectedLinearElement(
@@ -7946,7 +8572,18 @@ class App extends React.Component<AppProps, AppState> {
       target.setPointerCapture(event.pointerId);
     }
 
-    this.maybeCleanupAfterMissingPointerUp(event.nativeEvent);
+    // Уборка получает событие, чтобы адресат решил по pointerId, его ли это
+    // указатель: новый контакт не должен рвать чужую живую сессию. Иначе
+    // второй палец, входящий в двупальцевый жест, убивал панорамирование
+    // первого, и после распада жеста до одного пальца холст замирал.
+    //
+    // [!] Исключение -- ПЕРО: оно забирает поверхность себе. Ладонь, легшая
+    // первой, обязана лишиться своей сессии, иначе перо не начнёт штрих
+    // (палм-режекция, tabletInputPolicy.test.tsx). Поэтому для пера уборка
+    // зовётся без указателя и сносит безусловно, как и раньше.
+    this.maybeCleanupAfterMissingPointerUp(
+      event.nativeEvent.pointerType === "pen" ? null : event.nativeEvent,
+    );
     this.maybeUnfollowRemoteUser();
 
     if (this.state.searchMatches) {
@@ -8496,7 +9133,12 @@ class App extends React.Component<AppProps, AppState> {
    * pointerup handlers manually
    */
   private maybeCleanupAfterMissingPointerUp = (event: PointerEvent | null) => {
-    lastPointerUp?.();
+    // событие ПЕРЕДАЁТСЯ дальше, а не проглатывается: иначе второй палец,
+    // касающийся экрана, сносил сессию панорамирования первого (уборка без
+    // указателя трактуется как «снести всё»), и после распада пинча обратно
+    // до одного пальца возобновлять было уже нечего -- холст замирал.
+    // Получатель сам решает по pointerId, его ли это указатель.
+    lastPointerUp?.(event);
     this.missingPointerEventCleanupEmitter.trigger(event).clear();
   };
 
@@ -8673,13 +9315,19 @@ class App extends React.Component<AppProps, AppState> {
         window.addEventListener(EVENT.POINTER_UP, enableNextPaste);
       }
 
-      this.translateCanvas({
-        scrollX: this.state.scrollX - deltaX / this.state.zoom.value,
-        scrollY: this.state.scrollY - deltaY / this.state.zoom.value,
-      });
+      // [!] Функциональная форма обязательна. Объектная считала АБСОЛЮТНУЮ
+      // цель от `this.state` -- снимка, отстающего на кадр, пока React не
+      // закоммитил предыдущее обновление. Каждый кадр перетирал предыдущий
+      // от устаревшей базы, и часть сдвига терялась: холст ехал медленнее
+      // пальца и дёргался. Тот же класс ошибки породил магический множитель 2
+      // в ветке пинча (апстримный #7849 «two finger panning is slow»).
+      this.translateCanvas((state) => ({
+        scrollX: state.scrollX - deltaX / state.zoom.value,
+        scrollY: state.scrollY - deltaY / state.zoom.value,
+      }));
     });
     const teardown = withBatchedUpdates(
-      (lastPointerUp = (upEvent?: Event) => {
+      (lastPointerUp = (upEvent?: Event | null) => {
         // Only the pointer that started the pan ends it. A second finger
         // lifting during a pinch must not tear the session down -- one-finger
         // panning resumes when the pinch ends. A manual cleanup call (or a
@@ -10113,7 +10761,6 @@ class App extends React.Component<AppProps, AppState> {
             ...prevState,
             bindMode: "orbit",
             newElement: element,
-            startBoundElement: boundElement,
             suggestedBinding:
               boundElement && isBindingElement(element)
                 ? {
@@ -14165,6 +14812,14 @@ class App extends React.Component<AppProps, AppState> {
 
       // Zoom on plain wheel and Ctrl/Cmd+wheel (ctrlKey is also true
       // for trackpad pinch gestures, so both paths must zoom).
+      //
+      // while rubberband-overscrolled past the scroll constraints, suppress
+      // zooming until the viewport has snapped back inside the box. Panning
+      // (shift+wheel above) stays allowed -- it is how one gets back.
+      if (isViewportOverscrolled(this.state)) {
+        return;
+      }
+
       const sign = Math.sign(deltaY);
       const MAX_STEP = ZOOM_STEP * 100;
       const absDelta = Math.abs(deltaY);
@@ -14180,6 +14835,13 @@ class App extends React.Component<AppProps, AppState> {
         -sign *
         // reduced amplification for small deltas (small movements on a trackpad)
         Math.min(1, absDelta / 20);
+
+      // a locked viewport must not be zoomed out past the level it was
+      // locked at, otherwise the constrained box stops filling the screen
+      const minZoom = this.state.scrollConstraints?.lockZoom
+        ? this.state.scrollConstraints.zoom
+        : MIN_ZOOM;
+      newZoom = Math.max(newZoom, minZoom);
 
       this.translateCanvas((state) => ({
         ...getStateForZoom(
@@ -14302,6 +14964,8 @@ class App extends React.Component<AppProps, AppState> {
           cb && cb();
         },
       );
+      // a smaller viewport may push the min zoom up / shrink the pan range
+      this.constrainViewportToScrollConstraints();
     }
   };
 

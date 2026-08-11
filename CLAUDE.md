@@ -56,6 +56,7 @@ yarn test:playwright  # e2e (manual, не в CI)
 - **`publish.yml`** -- npm publish на `v*` tag push
 - **PRs (если нужны):** `gh pr create --repo emevart/sdamexdraw` (НЕ upstream)
 - **Upstream sync:** см. `/sync-upstream` skill. [!] Журнал разборов — `docs/upstream-sync.md`: что уже рассмотрено и с каким исходом. **Читать ПЕРЕД новой синхронизацией**, коммиты из его таблиц повторно не разбирать.
+- **Жесты на тач-устройствах** — `docs/touch-gestures.md`. [!] Самое хрупкое место редактора: два потока событий, пять инвариантов, три забракованных подхода к порогу. **Читать ПЕРЕД любой правкой жестов в `App.tsx`**; зелёные тесты живую приёмку на iPad не заменяют.
 
 ## Skills
 

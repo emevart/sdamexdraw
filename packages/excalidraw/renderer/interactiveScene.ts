@@ -1620,12 +1620,13 @@ const _renderInteractiveScene = ({
   deltaTime,
 }: InteractiveSceneRenderConfig): {
   scrollBars?: ReturnType<typeof getScrollBars>;
-  atLeastOneVisibleElement: boolean;
-  elementsMap: RenderableElementsMap;
   animationState?: typeof animationState;
 } => {
+  // `|| !visibleElements` -- наш гвард, у upstream его нет: без него
+  // рендер падал на неполном кадре. Возвращаемое значение после #11604
+  // сузилось до `{}`.
   if (canvas === null || !visibleElements) {
-    return { atLeastOneVisibleElement: false, elementsMap };
+    return {};
   }
 
   try {
@@ -1646,7 +1647,7 @@ const _renderInteractiveScene = ({
     });
   } catch (e) {
     console.warn("[excalidraw] renderInteractiveScene error:", e);
-    return { atLeastOneVisibleElement: false, elementsMap };
+    return {};
   }
 };
 
@@ -1663,10 +1664,11 @@ const _renderInteractiveSceneInner = ({
   editorInterface,
   animationState,
   deltaTime,
-}: InteractiveSceneRenderConfig): {
+}: // #11604 сузил возвращаемое значение: atLeastOneVisibleElement и elementsMap
+// больше никто не читает. У нас функция разбита на обёртку с try/catch и
+// _Inner, поэтому сузить пришлось обе.
+InteractiveSceneRenderConfig): {
   scrollBars?: ReturnType<typeof getScrollBars>;
-  atLeastOneVisibleElement: boolean;
-  elementsMap: RenderableElementsMap;
   animationState?: typeof animationState;
 } => {
   const [normalizedWidth, normalizedHeight] = getNormalizedCanvasDimensions(
@@ -2209,8 +2211,6 @@ const _renderInteractiveSceneInner = ({
 
   return {
     scrollBars,
-    atLeastOneVisibleElement: visibleElements.length > 0,
-    elementsMap,
     animationState: nextAnimationState,
   };
 };

@@ -28,6 +28,7 @@ import type {
   ExcalidrawArrowElement,
   ExcalidrawBindableElement,
   FixedPointBinding,
+  NonDeleted,
   NonDeletedSceneElementsMap,
   PointsPositionUpdates,
 } from "../types";
@@ -101,7 +102,7 @@ export const isFocusPointVisible = (
 
 // Updates the arrow endpoints in "orbit" configuration
 const focusPointUpdate = (
-  arrow: ExcalidrawArrowElement,
+  arrow: NonDeleted<ExcalidrawArrowElement>,
   bindableElement: ExcalidrawBindableElement | null,
   isStartBinding: boolean,
   elementsMap: NonDeletedSceneElementsMap,
@@ -220,7 +221,7 @@ export const handleFocusPointDrag = (
   const arrow = LinearElementEditor.getElement(
     linearElementEditor.elementId,
     elementsMap,
-  ) as any;
+  );
 
   // Sanity checks
   if (

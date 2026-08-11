@@ -64,7 +64,7 @@ const roughSVGDrawWithPrecision = (
 };
 
 const maybeWrapNodesInFrameClipPath = (
-  element: NonDeletedExcalidrawElement,
+  element: Readonly<NonDeletedExcalidrawElement>,
   root: SVGElement,
   nodes: SVGElement[],
   frameRendering: AppState["frameRendering"],
@@ -85,7 +85,7 @@ const maybeWrapNodesInFrameClipPath = (
 };
 
 const renderElementToSvg = (
-  element: NonDeletedExcalidrawElement,
+  element: Readonly<NonDeletedExcalidrawElement>,
   elementsMap: RenderableElementsMap,
   rsvg: RoughSVG,
   svgRoot: SVGElement,
@@ -200,8 +200,7 @@ const renderElementToSvg = (
       );
       addToRoot(node, element);
 
-      const label: ExcalidrawElement =
-        createPlaceholderEmbeddableLabel(element);
+      const label = createPlaceholderEmbeddableLabel(element);
       renderElementToSvg(
         label,
         elementsMap,
@@ -755,9 +754,9 @@ export const renderSceneToSvg = (
           );
 
           const boundTextElement = getBoundTextElement(element, elementsMap);
-          if (boundTextElement) {
+          if (boundTextElement?.isDeleted === false) {
             renderElementToSvg(
-              boundTextElement,
+              boundTextElement as Readonly<NonDeletedExcalidrawElement>,
               elementsMap,
               rsvg,
               svgRoot,

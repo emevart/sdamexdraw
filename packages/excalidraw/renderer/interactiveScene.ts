@@ -43,16 +43,13 @@ import {
   isTextElement,
   LinearElementEditor,
   getActiveTextElement,
-} from "@excalidraw/element";
-
-import { renderSelectionElement } from "@excalidraw/element";
-
-import {
   getElementsInGroup,
   getSelectedGroupIds,
   isSelectedViaGroup,
   selectGroupsFromGivenElements,
 } from "@excalidraw/element";
+
+import { renderSelectionElement } from "@excalidraw/element";
 
 import { getCommonBounds, getElementAbsoluteCoords } from "@excalidraw/element";
 import {
@@ -78,6 +75,7 @@ import type {
   ExcalidrawTextElement,
   GroupId,
   NonDeleted,
+  NonDeletedExcalidrawElement,
   NonDeletedSceneElementsMap,
 } from "@excalidraw/element/types";
 
@@ -1076,7 +1074,7 @@ const renderFrameHighlight = (
 const renderElementsBoxHighlight = (
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
-  elements: NonDeleted<ExcalidrawElement>[],
+  elements: readonly NonDeletedExcalidrawElement[],
   config?: { colors?: string[]; dashed?: boolean },
 ) => {
   const { colors = ["rgb(0,118,255)"], dashed = false } = config || {};
@@ -1546,7 +1544,7 @@ const renderCropHandles = (
 };
 
 const renderTextBox = (
-  text: NonDeleted<ExcalidrawTextElement>,
+  text: ExcalidrawTextElement,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   selectionColor: InteractiveCanvasRenderConfig["selectionColor"],
@@ -1570,7 +1568,7 @@ const renderTextBox = (
 };
 
 const renderResetAutoResizeHandle = (
-  text: NonDeleted<ExcalidrawTextElement>,
+  text: ExcalidrawTextElement,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   selectionColor: InteractiveCanvasRenderConfig["selectionColor"],
@@ -1819,10 +1817,15 @@ InteractiveSceneRenderConfig): {
     const elements = element
       ? [element]
       : getElementsInGroup(allElementsMap, appState.activeLockedId);
-    renderElementsBoxHighlight(context, appState, elements, {
-      colors: ["#ced4da"],
-      dashed: true,
-    });
+    renderElementsBoxHighlight(
+      context,
+      appState,
+      elements as NonDeletedExcalidrawElement[], // We don't typecheck runtime because of performance
+      {
+        colors: ["#ced4da"],
+        dashed: true,
+      },
+    );
   }
 
   const isFrameSelected = selectedElements.some((element) =>
@@ -1908,7 +1911,7 @@ InteractiveSceneRenderConfig): {
       renderLinearPointHandles(
         context,
         appState,
-        selectedElements[0] as ExcalidrawLinearElement,
+        selectedElements[0] as NonDeleted<ExcalidrawLinearElement>,
         elementsMap,
       );
     }

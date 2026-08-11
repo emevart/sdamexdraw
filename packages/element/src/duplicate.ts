@@ -42,6 +42,7 @@ import type {
   ElementsMap,
   ExcalidrawElement,
   GroupId,
+  NonDeletedExcalidrawElement,
   NonDeletedSceneElementsMap,
 } from "./types";
 
@@ -157,7 +158,7 @@ export const duplicateElements = (
   // loop over them.
   const processedIds = new Map<ExcalidrawElement["id"], true>();
   const groupIdMap = new Map();
-  const duplicatedElements: ExcalidrawElement[] = [];
+  const duplicatedElements: NonDeletedExcalidrawElement[] = [];
   const origElements: ExcalidrawElement[] = [];
   const origIdToDuplicateId = new Map<
     ExcalidrawElement["id"],
@@ -167,7 +168,7 @@ export const duplicateElements = (
     ExcalidrawElement["id"],
     ExcalidrawElement
   >();
-  const duplicateElementsMap = new Map<string, ExcalidrawElement>();
+  const duplicateElementsMap = new Map<string, NonDeletedExcalidrawElement>();
   const elementsMap = arrayToMap(elements) as ElementsMap;
   const _idsOfElementsToDuplicate =
     opts.type === "in-place"
@@ -214,7 +215,7 @@ export const duplicateElements = (
           groupIdMap,
           element,
           opts.randomizeSeed,
-        );
+        ) as NonDeletedExcalidrawElement;
 
         processedIds.set(newElement.id, true);
 

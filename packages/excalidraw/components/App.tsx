@@ -741,7 +741,21 @@ const gesture: Gesture = {
   lastCenter: null,
   initialDistance: null,
   initialScale: null,
+  zoomSamples: new Set(),
 };
+
+/**
+ * Мёртвая зона масштабирования: пока расстояние между пальцами изменилось
+ * меньше этой доли, жест считается чистым перемещением.
+ *
+ * Порог относительный, а не в пикселях: зум мультипликативен, и 4 px при
+ * пальцах в 60 px друг от друга -- это 7% масштаба, а при 400 px -- 1%.
+ *
+ * Зона «мягкая»: за порогом из масштаба вычитается сама зона, поэтому в
+ * момент пробоя ничего не скачет, а осознанный пинч работает как раньше,
+ * лишь смещённый на незаметные 4%.
+ */
+const PINCH_ZOOM_DEADZONE = 0.04;
 
 // Pen contacts currently on the surface. While non-empty, touch input is
 // inert (palm rejection): a resting palm must never cancel a pen stroke,
@@ -7487,14 +7501,35 @@ class App extends React.Component<AppProps, AppState> {
       gesture.lastCenter = center;
 
       const distance = getDistance(Array.from(gesture.pointers.values()));
+
+      // Масштаб пересчитываем только когда с прошлого раза обновились ОБА
+      // пальца. События pointermove приходят по одному на палец, и если
+      // считать масштаб на каждом, расстояние меряется по разновозрастным
+      // координатам: пока второй палец не догнал, оно скачет на величину шага
+      // первого. При параллельном перемещении это давало паразитный зум, хотя
+      // пальцы не сближались вовсе.
+      gesture.zoomSamples.add(event.pointerId);
+      const bothFingersSampled = gesture.zoomSamples.size >= 2;
+      if (bothFingersSampled) {
+        gesture.zoomSamples.clear();
+      }
+
+      // Мягкая мёртвая зона поверх этого -- уже против настоящего дрожания
+      // руки. За порогом из отношения вычитается сам порог, поэтому в момент
+      // пробоя масштаб не скачет.
+      const rawRatio = distance / gesture.initialDistance;
+      const ratio =
+        Math.abs(rawRatio - 1) <= PINCH_ZOOM_DEADZONE
+          ? 1
+          : rawRatio - Math.sign(rawRatio - 1) * PINCH_ZOOM_DEADZONE;
+
       // Fingers are always the camera: with palm rejection a gesture can only
       // be formed by real fingers, so pinch-zoom stays enabled even while a
       // drawing tool is active in pen mode (tablet input policy, #2536).
-      const scaleFactor = distance / gesture.initialDistance;
-
-      const nextZoom = scaleFactor
-        ? getNormalizedZoom(initialScale * scaleFactor)
-        : this.state.zoom.value;
+      const nextZoom =
+        bothFingersSampled && ratio
+          ? getNormalizedZoom(initialScale * ratio)
+          : this.state.zoom.value;
 
       this.setState((state) => {
         // constrain the zoom and pan components separately: the zoom step is
@@ -7542,6 +7577,7 @@ class App extends React.Component<AppProps, AppState> {
         gesture.initialDistance =
         gesture.initialScale =
           null;
+      gesture.zoomSamples.clear();
     }
 
     // жест распался до одного пальца -- он и продолжает панорамировать
@@ -9195,6 +9231,7 @@ class App extends React.Component<AppProps, AppState> {
       gesture.lastCenter = null;
       gesture.initialDistance = null;
       gesture.initialScale = null;
+      gesture.zoomSamples.clear();
       return;
     }
 
@@ -9216,6 +9253,8 @@ class App extends React.Component<AppProps, AppState> {
       gesture.initialDistance = getDistance(
         Array.from(gesture.pointers.values()),
       );
+      // каждый новый жест начинается с чистого листа выборок
+      gesture.zoomSamples.clear();
     }
   }
 

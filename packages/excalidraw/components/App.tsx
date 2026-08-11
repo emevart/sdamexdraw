@@ -721,6 +721,21 @@ let PLAIN_PASTE_TOAST_SHOWN = false;
 // принимает событие, чтобы получатель мог решить, его ли это указатель:
 // ручная уборка при новом pointerdown обязана НЕ рвать чужую сессию пана
 let lastPointerUp: ((event?: Event | null) => void) | null = null;
+
+/**
+ * Жест распался с двух пальцев до одного -- оставшийся палец продолжает
+ * панорамировать до отрыва, независимо от активного инструмента.
+ *
+ * Иначе он бесполезен: рисование ему отменили в момент появления второго
+ * пальца, а сессии панорамирования у него нет (она заводится только под
+ * рукой/pen mode/просмотром). Палец лежит на экране и не делает ничего --
+ * холст замирает до полного отрыва.
+ */
+let gestureCollapsePan: {
+  pointerId: number;
+  lastX: number;
+  lastY: number;
+} | null = null;
 const gesture: Gesture = {
   pointers: new Map(),
   lastCenter: null,
@@ -4571,6 +4586,17 @@ class App extends React.Component<AppProps, AppState> {
     const wasMultiTouchGesture = gesture.pointers.size >= 2;
     gesture.pointers.delete(event.pointerId);
 
+    if (wasMultiTouchGesture && gesture.pointers.size === 1) {
+      // передаём панорамирование оставшемуся пальцу (см. gestureCollapsePan)
+      const [[pointerId, coords]] = [...gesture.pointers.entries()];
+      gestureCollapsePan = { pointerId, lastX: coords.x, lastY: coords.y };
+    } else if (
+      gestureCollapsePan?.pointerId === event.pointerId ||
+      gesture.pointers.size === 0
+    ) {
+      gestureCollapsePan = null;
+    }
+
     // the multi-touch viewport gesture just disengaged: release the
     // rubberband that was withheld while it was active
     // (see `snapBackToScrollConstraints`)
@@ -7516,6 +7542,23 @@ class App extends React.Component<AppProps, AppState> {
         gesture.initialDistance =
         gesture.initialScale =
           null;
+    }
+
+    // жест распался до одного пальца -- он и продолжает панорамировать
+    if (
+      gestureCollapsePan &&
+      gestureCollapsePan.pointerId === event.pointerId &&
+      gesture.pointers.size < 2
+    ) {
+      const deltaX = event.clientX - gestureCollapsePan.lastX;
+      const deltaY = event.clientY - gestureCollapsePan.lastY;
+      gestureCollapsePan.lastX = event.clientX;
+      gestureCollapsePan.lastY = event.clientY;
+
+      this.translateCanvas((state) => ({
+        scrollX: state.scrollX + deltaX / state.zoom.value,
+        scrollY: state.scrollY + deltaY / state.zoom.value,
+      }));
     }
 
     if (

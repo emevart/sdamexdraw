@@ -126,6 +126,12 @@ describe("двупальцевый жест по touchmove", () => {
     gesture.pan(-5, 3);
     expect(h.state.zoom.value).toBe(zoomBefore);
 
+    // и дрожание пальцев в пределах порога намерения тоже не будит масштаб
+    gesture.spread(3);
+    gesture.spread(-3);
+    gesture.spread(2);
+    expect(h.state.zoom.value).toBe(zoomBefore);
+
     // и холст при этом действительно поехал
     expect({ x: h.state.scrollX, y: h.state.scrollY }).not.toEqual(
       scrollBefore,
@@ -160,6 +166,11 @@ describe("двупальцевый жест по touchmove", () => {
 
     const gesture = new TwoFingerGesture({ x: 60, y: 60 }, { x: 140, y: 60 });
     gesture.start();
+
+    // первый кадр за порогом ПРИЗНАЁТ намерение и переносит точку отсчёта --
+    // масштаб на нём ещё не двигается, чтобы не было скачка на всю накопленную
+    // дельту. Зум идёт со следующего кадра.
+    gesture.spread(20);
     gesture.spread(20);
 
     expect(h.state.zoom.value).toBeGreaterThan(zoomBefore);
@@ -192,6 +203,7 @@ describe("двупальцевый жест по touchmove", () => {
 
     const first = new TwoFingerGesture({ x: 40, y: 60 }, { x: 120, y: 60 });
     first.start();
+    first.spread(20);
     first.spread(20);
     first.end();
 

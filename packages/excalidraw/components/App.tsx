@@ -749,12 +749,23 @@ const touchGesture: {
   lastCenter: { x: number; y: number } | null;
   initialDistance: number | null;
   initialScale: number | null;
+  /** жест сейчас масштабирует (иначе -- чистое перемещение) */
+  zooming: boolean;
+  /** расстояние, от которого отсчитывается намерение начать зумить */
+  anchorDistance: number | null;
+  lastDistance: number | null;
+  /** сколько кадров подряд расстояние держится ровно */
+  settledFrames: number;
 } = {
   driving: false,
   ids: null,
   lastCenter: null,
   initialDistance: null,
   initialScale: null,
+  zooming: false,
+  anchorDistance: null,
+  lastDistance: null,
+  settledFrames: 0,
 };
 
 const resetTouchGesture = () => {
@@ -763,7 +774,26 @@ const resetTouchGesture = () => {
   touchGesture.lastCenter = null;
   touchGesture.initialDistance = null;
   touchGesture.initialScale = null;
+  touchGesture.zooming = false;
+  touchGesture.anchorDistance = null;
+  touchGesture.lastDistance = null;
+  touchGesture.settledFrames = 0;
 };
+
+/**
+ * Насколько должно измениться расстояние между пальцами, чтобы жест признали
+ * масштабированием, в экранных пикселях.
+ *
+ * Отсчёт ведётся от якоря, а не покадрово: дрожание руки колеблется вокруг
+ * якоря и порога не берёт, а осознанный пинч набирает смещение за кадр-два.
+ * Порог абсолютный, потому что тремор по амплитуде почти не зависит от того,
+ * насколько широко разведены пальцы.
+ */
+const ZOOM_ENGAGE_PX = 10;
+/** покадровое изменение расстояния, ниже которого считаем, что пинч замер */
+const ZOOM_SETTLE_PX = 1.5;
+/** сколько замерших кадров подряд возвращают жест в режим перемещения */
+const ZOOM_SETTLE_FRAMES = 3;
 
 /**
  * Жест распался с двух пальцев до одного -- оставшийся палец продолжает
@@ -8278,17 +8308,51 @@ class App extends React.Component<AppProps, AppState> {
       touchGesture.lastCenter = center;
       touchGesture.initialDistance = distance || null;
       touchGesture.initialScale = this.state.zoom.value;
+      touchGesture.zooming = false;
+      touchGesture.anchorDistance = distance;
+      touchGesture.lastDistance = distance;
+      touchGesture.settledFrames = 0;
       return;
     }
+
+    // Переключение «перемещение <-> масштабирование». Пока жест не признан
+    // масштабированием, зум заморожен -- дрожание пальцев в него не попадает
+    // вовсе. Признание происходит за кадр-два, а как только пинч замирает,
+    // жест возвращается к перемещению. На каждом переключении точка отсчёта
+    // пересчитывается, поэтому скачков нет.
+    const anchor = touchGesture.anchorDistance ?? distance;
+    const lastDistance = touchGesture.lastDistance ?? distance;
+
+    if (!touchGesture.zooming) {
+      if (Math.abs(distance - anchor) > ZOOM_ENGAGE_PX) {
+        touchGesture.zooming = true;
+        touchGesture.initialDistance = distance;
+        touchGesture.initialScale = this.state.zoom.value;
+        touchGesture.anchorDistance = distance;
+        touchGesture.settledFrames = 0;
+      }
+    } else if (Math.abs(distance - lastDistance) < ZOOM_SETTLE_PX) {
+      touchGesture.settledFrames += 1;
+      if (touchGesture.settledFrames >= ZOOM_SETTLE_FRAMES) {
+        touchGesture.zooming = false;
+        touchGesture.anchorDistance = distance;
+        touchGesture.settledFrames = 0;
+      }
+    } else {
+      touchGesture.settledFrames = 0;
+    }
+
+    touchGesture.lastDistance = distance;
 
     const deltaX = center.x - touchGesture.lastCenter.x;
     const deltaY = center.y - touchGesture.lastCenter.y;
     touchGesture.lastCenter = center;
 
     const scaleFactor = distance / touchGesture.initialDistance;
-    const nextZoom = scaleFactor
-      ? getNormalizedZoom(touchGesture.initialScale * scaleFactor)
-      : this.state.zoom.value;
+    const zoomTarget =
+      touchGesture.zooming && scaleFactor
+        ? getNormalizedZoom(touchGesture.initialScale * scaleFactor)
+        : null;
 
     let zoomChanged = false;
 
@@ -8299,8 +8363,13 @@ class App extends React.Component<AppProps, AppState> {
       const overscrollX = (state.scrollX - rest.scrollX) * state.zoom.value;
       const overscrollY = (state.scrollY - rest.scrollY) * state.zoom.value;
 
+      // `zoomTarget === null` -- жест в режиме перемещения, масштаб заморожен
       const zoomState = getStateForZoom(
-        { viewportX: center.x, viewportY: center.y, nextZoom },
+        {
+          viewportX: center.x,
+          viewportY: center.y,
+          nextZoom: zoomTarget ?? state.zoom.value,
+        },
         state,
       );
       const zoomedViewport = constrainScrollState({ ...state, ...zoomState });
@@ -9239,10 +9308,16 @@ class App extends React.Component<AppProps, AppState> {
         window.addEventListener(EVENT.POINTER_UP, enableNextPaste);
       }
 
-      this.translateCanvas({
-        scrollX: this.state.scrollX - deltaX / this.state.zoom.value,
-        scrollY: this.state.scrollY - deltaY / this.state.zoom.value,
-      });
+      // [!] Функциональная форма обязательна. Объектная считала АБСОЛЮТНУЮ
+      // цель от `this.state` -- снимка, отстающего на кадр, пока React не
+      // закоммитил предыдущее обновление. Каждый кадр перетирал предыдущий
+      // от устаревшей базы, и часть сдвига терялась: холст ехал медленнее
+      // пальца и дёргался. Тот же класс ошибки породил магический множитель 2
+      // в ветке пинча (апстримный #7849 «two finger panning is slow»).
+      this.translateCanvas((state) => ({
+        scrollX: state.scrollX - deltaX / state.zoom.value,
+        scrollY: state.scrollY - deltaY / state.zoom.value,
+      }));
     });
     const teardown = withBatchedUpdates(
       (lastPointerUp = (upEvent?: Event | null) => {

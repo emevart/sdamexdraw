@@ -718,7 +718,9 @@ let IS_PLAIN_PASTE = false;
 let IS_PLAIN_PASTE_TIMER = 0;
 let PLAIN_PASTE_TOAST_SHOWN = false;
 
-let lastPointerUp: (() => void) | null = null;
+// принимает событие, чтобы получатель мог решить, его ли это указатель:
+// ручная уборка при новом pointerdown обязана НЕ рвать чужую сессию пана
+let lastPointerUp: ((event?: Event | null) => void) | null = null;
 const gesture: Gesture = {
   pointers: new Map(),
   lastCenter: null,
@@ -8832,7 +8834,12 @@ class App extends React.Component<AppProps, AppState> {
    * pointerup handlers manually
    */
   private maybeCleanupAfterMissingPointerUp = (event: PointerEvent | null) => {
-    lastPointerUp?.();
+    // событие ПЕРЕДАЁТСЯ дальше, а не проглатывается: иначе второй палец,
+    // касающийся экрана, сносил сессию панорамирования первого (уборка без
+    // указателя трактуется как «снести всё»), и после распада пинча обратно
+    // до одного пальца возобновлять было уже нечего -- холст замирал.
+    // Получатель сам решает по pointerId, его ли это указатель.
+    lastPointerUp?.(event);
     this.missingPointerEventCleanupEmitter.trigger(event).clear();
   };
 
@@ -9015,7 +9022,7 @@ class App extends React.Component<AppProps, AppState> {
       });
     });
     const teardown = withBatchedUpdates(
-      (lastPointerUp = (upEvent?: Event) => {
+      (lastPointerUp = (upEvent?: Event | null) => {
         // Only the pointer that started the pan ends it. A second finger
         // lifting during a pinch must not tear the session down -- one-finger
         // panning resumes when the pinch ends. A manual cleanup call (or a

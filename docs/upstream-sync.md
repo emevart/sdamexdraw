@@ -12,10 +12,10 @@
 
 ### Принято (2)
 
-| upstream SHA | Коммит                                                            |
-| ------------ | ----------------------------------------------------------------- |
-| `dd8296af1`  | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) |
-| `e9c856d26`  | chore(editor): streamline getSelectedElementsByGroup (#11636)     |
+| upstream SHA | Коммит |
+| --- | --- |
+| `dd8296af1` | fix(editor): narrow `NonDeleted` type to `isDeleted: false` (#11470) |
+| `e9c856d26` | chore(editor): streamline getSelectedElementsByGroup (#11636) |
 
 Обе строки раньше стояли в таблице отклонённых («цена выше пользы» / «chore-рефактор») -- взяты сознательно: #11470 это инфраструктура, разблокирующая #11636 и #11777.
 

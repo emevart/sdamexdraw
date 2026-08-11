@@ -4,6 +4,19 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/). Версионирование: [Semantic Versioning](https://semver.org/).
 
+## [0.30.0] - 2026-08-12
+
+Волна 2 синхронизации с upstream: инфраструктурное сужение типа `NonDeleted`. Изменений в поведении редактора нет — релиз целиком типовой.
+
+### Изменено
+
+- **Ломающее (только для TypeScript):** `NonDeleted<T>` теперь несёт `isDeleted: false` вместо `isDeleted: boolean` (upstream #11470). Обычный `ExcalidrawElement` больше не присваивается в `NonDeleted<...>` без сужения — там, где элемент берётся из `scene.getElement()`, нужен гвард `isNonDeletedElement(el)` либо явный каст. Затронуты `newElement`, `movePoints`, `getSelectedElements` и всё, что типизировано `NonDeleted<...>` в публичных типах
+- `getSelectedElementsByGroup` упрощён (upstream #11636)
+
+### Удалено
+
+- 11 отладочных логов `[NONDELETED][INVARIANT] ...`, приехавших с upstream #11470. У upstream они помечены «this should never happen», но у нас срабатывали бы штатно: в collab-сессии удалённый элемент остаётся в сцене тумбстоуном (`isDeleted: true`), и штатные пути его законно встречают
+
 ## [0.29.0] - 2026-08-11
 
 Синхронизация с upstream (43 коммита, до `c5a50d223`), волна viewport и разбор жестов на тач-устройствах.

@@ -39,24 +39,24 @@ import {
 import { MobileSettingsRow } from "./MobileSettingsRow";
 
 import "./ToolIcon.scss";
-import "./MobileToolBar.scss";
+import "./MobileToolbar.scss";
 
 import type { ActionManager } from "../actions/manager";
 import type { AppClassProperties, AppState, ToolType } from "../types";
 
-type MobileToolBarProps = {
+type MobileToolbarProps = {
   app: AppClassProperties;
   onHandToolToggle: () => void;
   setAppState: React.Component<any, AppState>["setState"];
   renderAction: ActionManager["renderAction"];
 };
 
-export const MobileToolBar = ({
+export const MobileToolbar = ({
   app,
   onHandToolToggle,
   setAppState,
   renderAction,
-}: MobileToolBarProps) => {
+}: MobileToolbarProps) => {
   const activeTool = app.state.activeTool;
   const [lastActiveShape, setLastActiveShape] = useState<string>("rectangle");
   const [lastActiveLinear, setLastActiveLinear] = useState<string>("line");

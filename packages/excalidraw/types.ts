@@ -244,6 +244,7 @@ export type InteractiveCanvasAppState = Readonly<
     newElement: AppState["newElement"];
     isBindingEnabled: AppState["isBindingEnabled"];
     isMidpointSnappingEnabled: AppState["isMidpointSnappingEnabled"];
+    gridModeEnabled: AppState["gridModeEnabled"];
     suggestedBinding: AppState["suggestedBinding"];
     isRotating: AppState["isRotating"];
     elementsToHighlight: AppState["elementsToHighlight"];
@@ -591,11 +592,13 @@ export type OnExportProgress = {
 };
 
 export interface ExcalidrawProps {
+  className?: string;
   onChange?: (
     elements: readonly OrderedExcalidrawElement[],
     appState: AppState,
     files: BinaryFiles,
   ) => void;
+  onThemeChange?: (theme: Theme | "system") => void;
   /**
    * note: only subscribes if the props.onIncrement is defined on initial render
    */
@@ -774,6 +777,11 @@ export type CanvasActions = Partial<{
   export: false | ExportOpts;
   loadScene: boolean;
   saveToActiveFile: boolean;
+  /**
+   * defaults to true if `props.theme` is omitted or `props.onThemeChange`
+   * is supplied (at which point the theme is considered as host-app controlled),
+   * else default to false
+   * */
   toggleTheme: boolean | null;
   saveAsImage: boolean;
 }>;
@@ -870,6 +878,7 @@ export type AppClassProperties = {
   onStateChange: App["onStateChange"];
 
   lastPointerMoveCoords: App["lastPointerMoveCoords"];
+  lastPointerMoveEvent: App["lastPointerMoveEvent"];
   bindModeHandler: App["bindModeHandler"];
 
   setAppState: App["setAppState"];
@@ -1052,7 +1061,6 @@ export type FrameNameBounds = {
   y: number;
   width: number;
   height: number;
-  angle: number;
 };
 
 export type FrameNameBoundsCache = {

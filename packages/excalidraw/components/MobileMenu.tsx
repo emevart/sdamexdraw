@@ -8,7 +8,7 @@ import { calculateScrollCenter } from "../scene";
 import { SCROLLBAR_WIDTH, SCROLLBAR_MARGIN } from "../scene/scrollbars";
 
 import { ExitViewModeButton } from "./Actions";
-import { MobileToolBar } from "./MobileToolBar";
+import { MobileToolbar } from "./MobileToolbar";
 import { FixedSideContainer } from "./FixedSideContainer";
 
 import { Island } from "./Island";
@@ -112,7 +112,7 @@ export const MobileMenu = ({
 
   const renderToolbar = () => {
     return (
-      <MobileToolBar
+      <MobileToolbar
         app={app}
         onHandToolToggle={onHandToolToggle}
         setAppState={setAppState}

@@ -26,7 +26,7 @@ import {
 
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
-import { wrapText } from "../src";
+import { hasBoundingBox, wrapText } from "../src";
 import * as textElementUtils from "../src/textElement";
 import { getBoundTextElementPosition, getBoundTextMaxWidth } from "../src";
 import { LinearElementEditor } from "../src";
@@ -38,6 +38,7 @@ import {
 } from "../../excalidraw/tests/queries/dom";
 
 import type {
+  ExcalidrawArrowElement,
   ExcalidrawElement,
   ExcalidrawLinearElement,
   ExcalidrawTextElementWithContainer,
@@ -218,7 +219,7 @@ describe("Test Linear Elements", () => {
     // drag line from midpoint
     drag(midpoint, pointFrom(midpoint[0] + delta, midpoint[1] + delta));
     expect(renderInteractiveScene.mock.calls.length).toMatchInlineSnapshot(`8`);
-    expect(renderStaticScene.mock.calls.length).toMatchInlineSnapshot(`6`);
+    expect(renderStaticScene.mock.calls.length).toMatchInlineSnapshot(`7`);
     expect(line.points.length).toEqual(3);
     expect(line.points).toMatchInlineSnapshot(`
       [
@@ -236,6 +237,53 @@ describe("Test Linear Elements", () => {
         ],
       ]
     `);
+  });
+
+  it("should hide the bounding box while creating or dragging a point", () => {
+    const line = createTwoPointerLinearElement("line");
+    const editorInterface = {
+      userAgent: { isMobileDevice: false },
+    } as Parameters<typeof hasBoundingBox>[2];
+
+    fireEvent.pointerDown(interactiveCanvas, {
+      clientX: midpoint[0],
+      clientY: midpoint[1],
+    });
+    fireEvent.pointerMove(interactiveCanvas, {
+      clientX: midpoint[0] + delta,
+      clientY: midpoint[1] + delta,
+    });
+
+    expect(line.points.length).toBe(3);
+    expect(h.state.selectedLinearElement?.isDragging).toBe(true);
+    expect(hasBoundingBox([line], h.state, editorInterface)).toBe(false);
+
+    fireEvent.pointerUp(interactiveCanvas, {
+      clientX: midpoint[0] + delta,
+      clientY: midpoint[1] + delta,
+    });
+
+    const addedPoint = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+      line,
+      1,
+      h.scene.getNonDeletedElementsMap(),
+    );
+    fireEvent.pointerDown(interactiveCanvas, {
+      clientX: addedPoint[0],
+      clientY: addedPoint[1],
+    });
+    fireEvent.pointerMove(interactiveCanvas, {
+      clientX: addedPoint[0] + 1,
+      clientY: addedPoint[1] + 1,
+    });
+
+    expect(h.state.selectedLinearElement?.isDragging).toBe(true);
+    expect(hasBoundingBox([line], h.state, editorInterface)).toBe(false);
+
+    fireEvent.pointerUp(interactiveCanvas, {
+      clientX: addedPoint[0],
+      clientY: addedPoint[1],
+    });
   });
 
   it("should allow entering and exiting line editor via context menu", () => {
@@ -256,6 +304,46 @@ describe("Test Linear Elements", () => {
 
     expect(h.state.selectedLinearElement?.isEditing).toBe(true);
     expect(h.state.selectedLinearElement?.elementId).toEqual(h.elements[0].id);
+  });
+
+  it("should allow editing an arrow from the context menu when its bound text appears earlier in the elements array", () => {
+    const arrow = createTwoPointerLinearElement("arrow");
+
+    const textElement = API.createElement({
+      type: "text",
+      x: 0,
+      y: 0,
+      text: "abc",
+      containerId: arrow.id,
+      width: 30,
+      height: 20,
+    });
+    const updatedArrow = {
+      ...arrow,
+      boundElements: [{ type: "text" as const, id: textElement.id }],
+    };
+
+    // text element intentionally placed before its container in the array
+    API.setElements([textElement, updatedArrow]);
+
+    fireEvent.contextMenu(GlobalTestState.interactiveCanvas, {
+      button: 2,
+      clientX: midpoint[0],
+      clientY: midpoint[1],
+    });
+    const contextMenu = document.querySelector(".context-menu");
+    fireEvent.contextMenu(GlobalTestState.interactiveCanvas, {
+      button: 2,
+      clientX: midpoint[0],
+      clientY: midpoint[1],
+    });
+
+    expect(() =>
+      fireEvent.click(queryByText(contextMenu as HTMLElement, "Edit arrow")!),
+    ).not.toThrow();
+
+    expect(h.state.selectedLinearElement?.isEditing).toBe(true);
+    expect(h.state.selectedLinearElement?.elementId).toEqual(updatedArrow.id);
   });
 
   it("should enter line editor via enter (line)", () => {
@@ -328,10 +416,45 @@ describe("Test Linear Elements", () => {
     createTwoPointerLinearElement("arrow");
     expect(h.state.selectedLinearElement?.isEditing).toBe(false);
 
-    mouse.doubleClick();
+    mouse.doubleClickAt(midpoint[0], midpoint[1]);
     expect(h.state.selectedLinearElement?.isEditing).toBe(false);
     await getTextEditor();
   });
+
+  it.each([
+    ["start", null],
+    ["start", "triangle"],
+    ["end", null],
+    ["end", "triangle"],
+  ] as const)(
+    "should not toggle the %s arrowhead from %s on endpoint dblclick",
+    async (side, arrowhead) => {
+      const arrow = API.createElement({
+        type: "arrow",
+        x: p1[0],
+        y: p1[1],
+        width: p2[0] - p1[0],
+        height: 0,
+        points: [pointFrom(0, 0), pointFrom(p2[0] - p1[0], p2[1] - p1[1])],
+        startArrowhead: side === "start" ? arrowhead : null,
+        endArrowhead: side === "end" ? arrowhead : null,
+      });
+      API.setElements([arrow]);
+      mouse.clickAt(midpoint[0], midpoint[1]);
+
+      const endpoint = side === "start" ? p1 : p2;
+      mouse.doubleClickAt(endpoint[0], endpoint[1]);
+
+      const updatedArrow = h.elements[0] as ExcalidrawArrowElement;
+      expect(
+        side === "start"
+          ? updatedArrow.startArrowhead
+          : updatedArrow.endArrowhead,
+      ).toBe(arrowhead);
+
+      await getTextEditor();
+    },
+  );
 
   it("shouldn't create text element on double click in line editor (arrow)", async () => {
     createTwoPointerLinearElement("arrow");
@@ -1091,7 +1214,7 @@ describe("Test Linear Elements", () => {
 
       expect(h.elements.length).toBe(1);
       expect(h.elements[0].id).toBe(arrow.id);
-      mouse.doubleClickAt(arrow.x, arrow.y);
+      mouse.doubleClickAt(midpoint[0], midpoint[1]);
       expect(h.elements.length).toBe(2);
 
       const text = h.elements[1] as ExcalidrawTextElementWithContainer;
@@ -1343,6 +1466,7 @@ describe("Test Linear Elements", () => {
         h.elements[0],
         h.app.scene,
         "nw",
+        false,
         false,
       );
       expect(

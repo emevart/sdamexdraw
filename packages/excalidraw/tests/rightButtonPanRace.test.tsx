@@ -1,6 +1,18 @@
 import React from "react";
 import { vi } from "vitest";
 
+import { MQ_MIN_WIDTH_DESKTOP } from "@excalidraw/common";
+
+import { Excalidraw } from "../index";
+
+import { API } from "./helpers/api";
+import {
+  GlobalTestState,
+  fireEvent,
+  render,
+  unmountComponent,
+} from "./test-utils";
+
 // Гонка быстрого ПКМ-флика (регресс 0.28.5, репро founder 2026-07-13):
 // pan-onPointerMove обёрнут в throttleRAF; при быстром флике pointerup
 // приходит раньше кадра — teardown сбрасывает isPanning и уже ПОСЛЕ этого
@@ -16,18 +28,6 @@ import { vi } from "vitest";
 vi.mock("@excalidraw/common", async (importOriginal) => {
   return await importOriginal();
 });
-
-import { MQ_MIN_WIDTH_DESKTOP } from "@excalidraw/common";
-
-import { Excalidraw } from "../index";
-
-import { API } from "./helpers/api";
-import {
-  GlobalTestState,
-  fireEvent,
-  render,
-  unmountComponent,
-} from "./test-utils";
 
 const { h } = window;
 

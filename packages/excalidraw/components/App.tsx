@@ -8290,6 +8290,8 @@ class App extends React.Component<AppProps, AppState> {
       ? getNormalizedZoom(touchGesture.initialScale * scaleFactor)
       : this.state.zoom.value;
 
+    let zoomChanged = false;
+
     this.setState((state) => {
       // та же композиция зума и пана, что в pointer-ветке: жёсткий кламп
       // отдельно, накопленный overscroll поверх (см. `constrainScrollState`)
@@ -8304,6 +8306,12 @@ class App extends React.Component<AppProps, AppState> {
       const zoomedViewport = constrainScrollState({ ...state, ...zoomState });
       const zoomValue = zoomedViewport.zoom.value;
 
+      // [!] `shouldCacheIgnoreZoom` ставится ТОЛЬКО когда масштаб реально
+      // поехал. Он велит рисовать элементы из растрового кэша, снятого при
+      // другом масштабе, -- на пинче это оправданная экономия, а при чистом
+      // перемещении даёт мыло и «плывущую» картинку на ровном месте.
+      zoomChanged = zoomedViewport.zoom.value !== state.zoom.value;
+
       this.translateCanvas(
         {
           zoom: zoomedViewport.zoom,
@@ -8313,14 +8321,17 @@ class App extends React.Component<AppProps, AppState> {
           // и множитель дал бы двукратный перебег.
           scrollX: zoomedViewport.scrollX + (overscrollX + deltaX) / zoomValue,
           scrollY: zoomedViewport.scrollY + (overscrollY + deltaY) / zoomValue,
-          shouldCacheIgnoreZoom: true,
+          shouldCacheIgnoreZoom: zoomChanged,
         },
         { zoomPreConstrained: true },
       );
 
       return null;
     });
-    this.resetShouldCacheIgnoreZoomDebounced();
+
+    if (zoomChanged) {
+      this.resetShouldCacheIgnoreZoomDebounced();
+    }
   };
 
   handleHoverSelectedLinearElement(

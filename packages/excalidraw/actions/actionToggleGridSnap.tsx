@@ -2,7 +2,7 @@ import { CaptureUpdateAction } from "@excalidraw/element";
 
 import { register } from "./register";
 
-import type { AppState } from "../types";
+import type { UIAppState } from "../types";
 
 export const actionToggleGridSnap = register({
   name: "gridSnap",
@@ -22,7 +22,7 @@ export const actionToggleGridSnap = register({
       captureUpdate: CaptureUpdateAction.EVENTUALLY,
     };
   },
-  checked: (appState: AppState) => appState.gridSnapEnabled,
+  checked: (appState: UIAppState) => appState.gridSnapEnabled,
   predicate: (element, appState) => {
     // Only show when grid is visible — snapping without grid makes no sense
     return appState.gridModeEnabled;

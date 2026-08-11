@@ -1647,7 +1647,7 @@ const _renderInteractiveScene = ({
     });
   } catch (e) {
     console.warn("[excalidraw] renderInteractiveScene error:", e);
-    return { atLeastOneVisibleElement: false, elementsMap };
+    return {};
   }
 };
 
@@ -1664,10 +1664,11 @@ const _renderInteractiveSceneInner = ({
   editorInterface,
   animationState,
   deltaTime,
-}: InteractiveSceneRenderConfig): {
+}: // #11604 сузил возвращаемое значение: atLeastOneVisibleElement и elementsMap
+// больше никто не читает. У нас функция разбита на обёртку с try/catch и
+// _Inner, поэтому сузить пришлось обе.
+InteractiveSceneRenderConfig): {
   scrollBars?: ReturnType<typeof getScrollBars>;
-  atLeastOneVisibleElement: boolean;
-  elementsMap: RenderableElementsMap;
   animationState?: typeof animationState;
 } => {
   const [normalizedWidth, normalizedHeight] = getNormalizedCanvasDimensions(

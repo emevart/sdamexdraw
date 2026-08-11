@@ -755,7 +755,30 @@ const gesture: Gesture = {
  * момент пробоя ничего не скачет, а осознанный пинч работает как раньше,
  * лишь смещённый на незаметные 4%.
  */
-const PINCH_ZOOM_DEADZONE = 0.04;
+const PINCH_ZOOM_DEADZONE = 0.06;
+
+/**
+ * Пропускает изменение масштаба через мёртвую зону шириной `deadzone`.
+ *
+ * - до `deadzone` -- ноль: дрожание руки при перемещении зумом не считается;
+ * - от `deadzone` до `2 * deadzone` -- плавный разгон (значение и производная
+ *   непрерывны на обеих границах);
+ * - дальше -- ровно `x - deadzone`, то есть параллельно исходному отклику:
+ *   осознанный пинч работает как раньше, лишь смещённый на ширину зоны.
+ *
+ * Важна именно непрерывность производной: жёсткий порог трогает масштаб
+ * рывком ровно в момент перехода от перемещения к пинчу.
+ */
+const applyPinchDeadzone = (x: number, deadzone: number) => {
+  if (x <= deadzone) {
+    return 0;
+  }
+  if (x >= 2 * deadzone) {
+    return x - deadzone;
+  }
+  const s = (x - deadzone) / deadzone;
+  return deadzone * s * s * (2 - s);
+};
 
 // Pen contacts currently on the surface. While non-empty, touch input is
 // inert (palm rejection): a resting palm must never cancel a pen stroke,
@@ -7514,22 +7537,22 @@ class App extends React.Component<AppProps, AppState> {
         gesture.zoomSamples.clear();
       }
 
-      // Мягкая мёртвая зона поверх этого -- уже против настоящего дрожания
-      // руки. За порогом из отношения вычитается сам порог, поэтому в момент
-      // пробоя масштаб не скачет.
+      // Плавная мёртвая зона поверх этого -- уже против настоящего дрожания
+      // руки. Отклик нарастает от нуля на входе в зону до полного на её
+      // удвоении: жёсткий порог давал скачок ПРОИЗВОДНОЙ, и масштаб трогался
+      // рывком ровно в момент перехода от перемещения к пинчу.
       const rawRatio = distance / gesture.initialDistance;
       const ratio =
-        Math.abs(rawRatio - 1) <= PINCH_ZOOM_DEADZONE
-          ? 1
-          : rawRatio - Math.sign(rawRatio - 1) * PINCH_ZOOM_DEADZONE;
+        Number.isFinite(rawRatio) && rawRatio > 0
+          ? 1 +
+            Math.sign(rawRatio - 1) *
+              applyPinchDeadzone(Math.abs(rawRatio - 1), PINCH_ZOOM_DEADZONE)
+          : 1;
 
       // Fingers are always the camera: with palm rejection a gesture can only
       // be formed by real fingers, so pinch-zoom stays enabled even while a
       // drawing tool is active in pen mode (tablet input policy, #2536).
-      const nextZoom =
-        bothFingersSampled && ratio
-          ? getNormalizedZoom(initialScale * ratio)
-          : this.state.zoom.value;
+      const zoomTarget = getNormalizedZoom(initialScale * ratio);
 
       this.setState((state) => {
         // constrain the zoom and pan components separately: the zoom step is
@@ -7542,6 +7565,12 @@ class App extends React.Component<AppProps, AppState> {
         // pre-existing overscroll, in screen px (zoom-independent)
         const overscrollX = (state.scrollX - rest.scrollX) * state.zoom.value;
         const overscrollY = (state.scrollY - rest.scrollY) * state.zoom.value;
+
+        // Масштаб берётся из АКТУАЛЬНОГО state, а не из this.state снаружи:
+        // на событиях без свежей пары пальцев мы обязаны оставить зум ровно
+        // как есть, а внешний this.state успевает отстать от уже применённого
+        // и откатывал масштаб назад -- это и читалось как дёрганье.
+        const nextZoom = bothFingersSampled ? zoomTarget : state.zoom.value;
 
         const zoomState = getStateForZoom(
           {

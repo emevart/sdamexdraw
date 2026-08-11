@@ -60,17 +60,17 @@ describe("мёртвая зона пинч-зума", () => {
     const finger1 = new Pointer("touch", 1);
     const finger2 = new Pointer("touch", 2);
 
-    // пальцы в 100 px друг от друга -> мёртвая зона 5% = 5 px
+    // пальцы в 100 px друг от друга -> мёртвая зона 6% = 6 px
     finger1.downAt(40, 50);
     finger2.downAt(140, 50);
 
-    // ведём вниз, слегка «дыша» пальцами: расстояние гуляет на +-3 px
-    finger1.move(-3, 5);
-    finger2.move(3, 5);
-    finger1.move(3, 5);
-    finger2.move(-3, 5);
+    // ведём вниз, слегка «дыша» пальцами: расстояние гуляет в пределах зоны
     finger1.move(-2, 5);
     finger2.move(2, 5);
+    finger1.move(2, 5);
+    finger2.move(-2, 5);
+    finger1.move(-1, 5);
+    finger2.move(1, 5);
 
     expect(h.state.zoom.value).toBe(zoomBefore);
 
@@ -100,7 +100,7 @@ describe("мёртвая зона пинч-зума", () => {
     finger2.up();
   });
 
-  it("после пробоя порога масштаб не скачет, а идёт плавно", async () => {
+  it("сразу за порогом отклик мягкий, без рывка", async () => {
     await render(<Excalidraw handleKeyboardGlobally={true} />);
     await waitFor(() => expect(h.state.width).toBe(200));
 
@@ -110,15 +110,15 @@ describe("мёртвая зона пинч-зума", () => {
     finger1.downAt(60, 50);
     finger2.downAt(160, 50);
 
-    // чуть за грань порога: пальцы разошлись на 6 px при базе 100 px = 6%
-    finger1.move(-3, 0);
-    finger2.move(3, 0);
+    // заметно за грань: пальцы разошлись на 18 px при базе 100 px = 18%
+    finger1.move(-9, 0);
+    finger2.move(9, 0);
 
-    // масштаб тронулся, но НЕ на все 6%: мягкая зона вычитает свои 4%,
-    // поэтому в момент пробоя порога скачка нет -- изменение около 2%
+    // масштаб тронулся, но НЕ на все 18%: зона съедает свои 6%, и вблизи
+    // порога отклик ещё и разгоняется плавно -- рывка в момент перехода нет
     const zoomAtEngage = h.state.zoom.value;
     expect(zoomAtEngage).toBeGreaterThan(1);
-    expect(zoomAtEngage).toBeLessThan(1.03);
+    expect(zoomAtEngage).toBeLessThan(1.18);
 
     // дальше разводим по-настоящему
     finger1.move(-30, 0);

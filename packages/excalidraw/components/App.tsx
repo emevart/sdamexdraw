@@ -723,6 +723,49 @@ let PLAIN_PASTE_TOAST_SHOWN = false;
 let lastPointerUp: ((event?: Event | null) => void) | null = null;
 
 /**
+ * Двупальцевый жест, посчитанный по touchmove.
+ *
+ * pointer-события приходят ПО ОДНОМУ на палец: в любой момент координата
+ * одного пальца свежая, второго -- отставшая на шаг. Расстояние между
+ * пальцами поэтому «дышит» даже при строго параллельном переносе, и зум
+ * дрожит на четверть при сдвиге вдоль линии пальцев. TouchEvent несёт ВСЕ
+ * касания разом, обе координаты всегда одновременны -- преобразование
+ * получается точным.
+ *
+ * Учёт самих пальцев остаётся за pointer-событиями (`gesture.pointers`):
+ * на нём держатся палм-режекция и предохранитель, отключающий на iPad
+ * собственный `gesturechange` Safari. Здесь меняется только то, КТО считает
+ * преобразование.
+ */
+const touchGesture: {
+  driving: boolean;
+  /**
+   * Идентификаторы пальцев, ведущих жест. Точка отсчёта пересчитывается,
+   * как только пара сменилась -- на это полагаться надёжнее, чем на приход
+   * `touchend`: он теряется (уход в фон, системный жест, перехват браузером),
+   * и тогда следующий жест считался бы от чужой базы.
+   */
+  ids: string | null;
+  lastCenter: { x: number; y: number } | null;
+  initialDistance: number | null;
+  initialScale: number | null;
+} = {
+  driving: false,
+  ids: null,
+  lastCenter: null,
+  initialDistance: null,
+  initialScale: null,
+};
+
+const resetTouchGesture = () => {
+  touchGesture.driving = false;
+  touchGesture.ids = null;
+  touchGesture.lastCenter = null;
+  touchGesture.initialDistance = null;
+  touchGesture.initialScale = null;
+};
+
+/**
  * Жест распался с двух пальцев до одного -- оставшийся палец продолжает
  * панорамировать до отрыва, независимо от активного инструмента.
  *
@@ -3894,6 +3937,12 @@ class App extends React.Component<AppProps, AppState> {
       event.preventDefault();
     }
 
+    // Смена состава касаний -- всегда новая точка отсчёта для двупальцевого
+    // жеста. Полагаться только на `touchend` нельзя: он теряется при уходе в
+    // фон и системных жестах, и тогда следующий жест считался бы от чужой
+    // базы, давая скачок в первый же кадр.
+    resetTouchGesture();
+
     // Two-finger double-tap undo detection. Only direct (non-stylus) touches
     // count, and we never arm while a pen is on the surface -- a palm resting
     // next to the pen must not arm (or spuriously trigger) the undo gesture.
@@ -4029,6 +4078,11 @@ class App extends React.Component<AppProps, AppState> {
     } else {
       gesture.pointers.clear();
       activePenPointerIds.clear();
+    }
+
+    // пальцев меньше двух -- touch-путь больше не ведёт жест
+    if (event.touches.length < 2) {
+      resetTouchGesture();
     }
   };
 
@@ -7476,6 +7530,9 @@ class App extends React.Component<AppProps, AppState> {
 
     const initialScale = gesture.initialScale;
     if (
+      // жест ведёт touch-путь (см. `touchGesture`) -- здесь молчим, иначе
+      // преобразование применится дважды
+      !touchGesture.driving &&
       gesture.pointers.size === 2 &&
       gesture.lastCenter &&
       initialScale &&
@@ -8163,6 +8220,107 @@ class App extends React.Component<AppProps, AppState> {
   // set touch moving for mobile context menu
   private handleTouchMove = (event: React.TouchEvent<HTMLCanvasElement>) => {
     invalidateContextMenu = true;
+    this.driveGestureFromTouches(event.nativeEvent);
+  };
+
+  /**
+   * Считает двупальцевое преобразование по ОБЕИМ свежим координатам (см.
+   * `touchGesture`). Пока этот путь ведёт жест, ветка пинча в
+   * `handleCanvasPointerMove` молчит, иначе преобразование применилось бы дважды.
+   */
+  private driveGestureFromTouches = (event: TouchEvent) => {
+    const touches = Array.from(event.touches);
+
+    if (touches.length !== 2) {
+      resetTouchGesture();
+      return;
+    }
+
+    // Перо ведёт штрих, а не камеру. На iPadOS перо отличимо и в touch-пути
+    // (`touchType`, WebKit-only); `activePenPointerIds` -- вторая проверка:
+    // pointerdown на iOS приходит РАНЬШЕ touchstart, значит к этому моменту
+    // палм-режекция уже отработала.
+    if (
+      activePenPointerIds.size > 0 ||
+      touches.some(
+        (touch) =>
+          (touch as Touch & { touchType?: string }).touchType === "stylus",
+      )
+    ) {
+      resetTouchGesture();
+      return;
+    }
+
+    const center = {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    };
+    const distance = Math.hypot(
+      touches[0].clientX - touches[1].clientX,
+      touches[0].clientY - touches[1].clientY,
+    );
+
+    const ids = touches
+      .map((touch) => touch.identifier)
+      .sort((a, b) => a - b)
+      .join(":");
+
+    if (
+      !touchGesture.driving ||
+      touchGesture.ids !== ids ||
+      !touchGesture.lastCenter ||
+      !touchGesture.initialDistance ||
+      !touchGesture.initialScale
+    ) {
+      // первый кадр жеста задаёт точку отсчёта и ничего не двигает
+      touchGesture.driving = true;
+      touchGesture.ids = ids;
+      touchGesture.lastCenter = center;
+      touchGesture.initialDistance = distance || null;
+      touchGesture.initialScale = this.state.zoom.value;
+      return;
+    }
+
+    const deltaX = center.x - touchGesture.lastCenter.x;
+    const deltaY = center.y - touchGesture.lastCenter.y;
+    touchGesture.lastCenter = center;
+
+    const scaleFactor = distance / touchGesture.initialDistance;
+    const nextZoom = scaleFactor
+      ? getNormalizedZoom(touchGesture.initialScale * scaleFactor)
+      : this.state.zoom.value;
+
+    this.setState((state) => {
+      // та же композиция зума и пана, что в pointer-ветке: жёсткий кламп
+      // отдельно, накопленный overscroll поверх (см. `constrainScrollState`)
+      const rest = constrainScrollState(state);
+      const overscrollX = (state.scrollX - rest.scrollX) * state.zoom.value;
+      const overscrollY = (state.scrollY - rest.scrollY) * state.zoom.value;
+
+      const zoomState = getStateForZoom(
+        { viewportX: center.x, viewportY: center.y, nextZoom },
+        state,
+      );
+      const zoomedViewport = constrainScrollState({ ...state, ...zoomState });
+      const zoomValue = zoomedViewport.zoom.value;
+
+      this.translateCanvas(
+        {
+          zoom: zoomedViewport.zoom,
+          // [!] БЕЗ множителя 2 из pointer-ветки. Там он латает потерю одного
+          // из двух батченных обновлений (объектная форма setState, last-write
+          // -wins), а не геометрию. Здесь событие одно на кадр, терять нечего,
+          // и множитель дал бы двукратный перебег.
+          scrollX: zoomedViewport.scrollX + (overscrollX + deltaX) / zoomValue,
+          scrollY: zoomedViewport.scrollY + (overscrollY + deltaY) / zoomValue,
+          shouldCacheIgnoreZoom: true,
+        },
+        { zoomPreConstrained: true },
+      );
+
+      return null;
+    });
+    this.resetShouldCacheIgnoreZoomDebounced();
   };
 
   handleHoverSelectedLinearElement(
@@ -8327,7 +8485,18 @@ class App extends React.Component<AppProps, AppState> {
       target.setPointerCapture(event.pointerId);
     }
 
-    this.maybeCleanupAfterMissingPointerUp(event.nativeEvent);
+    // Уборка получает событие, чтобы адресат решил по pointerId, его ли это
+    // указатель: новый контакт не должен рвать чужую живую сессию. Иначе
+    // второй палец, входящий в двупальцевый жест, убивал панорамирование
+    // первого, и после распада жеста до одного пальца холст замирал.
+    //
+    // [!] Исключение -- ПЕРО: оно забирает поверхность себе. Ладонь, легшая
+    // первой, обязана лишиться своей сессии, иначе перо не начнёт штрих
+    // (палм-режекция, tabletInputPolicy.test.tsx). Поэтому для пера уборка
+    // зовётся без указателя и сносит безусловно, как и раньше.
+    this.maybeCleanupAfterMissingPointerUp(
+      event.nativeEvent.pointerType === "pen" ? null : event.nativeEvent,
+    );
     this.maybeUnfollowRemoteUser();
 
     if (this.state.searchMatches) {

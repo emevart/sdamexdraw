@@ -1,100 +1,22 @@
 ---
 name: install-in-billion
-description: Установить новую версию `@emevart/excalidraw` в основной репо Billion Dollars и закоммитить.
+description: Проверяемое обновление SdamEx на опубликованную версию библиотеки.
 disable-model-invocation: true
 argument-hint: "<X.Y.Z>"
 category: release
 ---
 
-Установка опубликованной версии `@emevart/excalidraw` в Billion Dollars (`H:\billion-dollars\apps\frontend\`).
+# Установка в SdamEx
 
-## [!] Ставим тарболом из бакета, а не из GitHub Packages
+Прочитай AGENTS.md форка и актуальные инструкции потребителя. Найди его checkout по окружению; не переключай общий рабочий каталог или сессию коллеги.
 
-С 0.29.0 зависимость в `apps/frontend/package.json` -- прямой URL:
+1. Проверь точную опубликованную версию, release SHA и publish run.
+2. Прочитай текущую dependency и lockfile потребителя: возможен URL tarball.
+3. Для tarball используй артефакт проверенного release SHA. Локальный npm pack допустим после чистой сборки этой версии и проверки package metadata/dist.
+4. Upload в Object Storage выполняется только в соответствующем scope. Bucket/profile возьми из текущих инструкций потребителя. Используй явный profile команды, не меняй общий активный профиль машины. Уже существующий URL версии не перезаписывай. Скачай обратно и сравни байты и SHA-512/integrity.
+5. В отдельном checkout/ветке потребителя обнови dependency и lockfile штатным пакетным менеджером. Не разделяй node_modules с другой сессией.
+6. Выполни frontend gates из его AGENTS.md и контракт docs/agent-development.md форка. Зелёная сборка библиотеки не заменяет typecheck потребителя.
+7. Commit/PR — по правилам потребителя, затем его штатный release flow. Публикация пакета сама по себе не разрешает deployment SdamEx.
+8. Receipt: версия/URL/integrity → release SHA → consumer commit/PR → checks. Непроведённую device QA укажи отдельно.
 
-```
-"@emevart/excalidraw": "https://storage.yandexcloud.net/sdamex-npm-artifacts/emevart-excalidraw-X.Y.Z.tgz"
-```
-
-Почему: GitHub Packages для приватного npm требует токен **на каждой машине, которая ставит зависимости** -- локально, в CI и внутри Docker-сборки фронтенда. Бакет с анонимным чтением снимает это со всех трёх разом. `/publish` всё равно публикует и в GitHub Packages -- это остаётся источником версий и историей, но потребитель ходит в бакет.
-
-## Steps
-
-1. **Проверить, что версия опубликована:**
-
-   ```bash
-   gh api users/emevart/packages/npm/excalidraw/versions --jq '.[0:3] | .[] | .name'
-   ```
-
-   [!] Без ведущего слэша -- Git Bash переписывает `/users/...` в путь на диске и `gh` падает с `invalid API endpoint`.
-
-2. **Собрать тарбол** (в форке, на `master` с уже запушенным тегом):
-
-   ```bash
-   cd packages/excalidraw
-   npm pack --pack-destination <scratchpad>
-   ```
-
-   Имя получится `emevart-excalidraw-X.Y.Z.tgz`. `npm pack` печатает `integrity: sha512-...` -- запомнить, пригодится в шаге 4.
-
-3. **Залить в бакет:**
-
-   ```bash
-   yc config profile activate billion-dollars        # НЕ -staging: у того нет прав на бакет
-   yc storage s3api put-object \
-     --bucket sdamex-npm-artifacts \
-     --key emevart-excalidraw-X.Y.Z.tgz \
-     --body <scratchpad>/emevart-excalidraw-X.Y.Z.tgz
-   yc config profile activate billion-dollars-actions-staging   # вернуть профиль обратно
-   ```
-
-4. **Обязательно: скачать обратно и сверить.**
-
-   ```bash
-   curl -sSL -o <scratchpad>/roundtrip.tgz \
-     https://storage.yandexcloud.net/sdamex-npm-artifacts/emevart-excalidraw-X.Y.Z.tgz
-   openssl dgst -sha512 -binary <scratchpad>/roundtrip.tgz | openssl base64 -A
-   cmp <scratchpad>/emevart-excalidraw-X.Y.Z.tgz <scratchpad>/roundtrip.tgz
-   ```
-
-   Хэш обязан совпасть с тем, что напечатал `npm pack`. Битая или недозалитая раздача проявилась бы уже как невоспроизводимая ошибка `npm ci` в CI или в Docker-сборке -- то есть далеко от причины.
-
-5. **Правка версии + install:**
-
-   ```bash
-   cd /h/billion-dollars/apps/frontend
-   sed -i 's|emevart-excalidraw-<СТАРАЯ>.tgz|emevart-excalidraw-X.Y.Z.tgz|g' package.json
-   npm install
-   ```
-
-   Токен не нужен -- бакет отдаёт анонимно. Проверить, что обновились **обе** `package.json` и `package-lock.json`: `npm ci` требует их синхронности.
-
-6. **Гейты:**
-
-   ```bash
-   npm run typecheck
-   npm run build
-   ```
-
-   [!] Первым делом смотреть `typecheck`: релизы форка, меняющие публичные типы (например 0.30.0 -- сужение `NonDeleted` до `isDeleted: false`), ломаются именно здесь и только здесь.
-
-7. **Commit + PR в `develop`:**
-
-   ```bash
-   git checkout -b chore/bump-excalidraw-X.Y.Z
-   git add apps/frontend/package.json apps/frontend/package-lock.json
-   git commit -m "chore(deps): bump @emevart/excalidraw to X.Y.Z"
-   git push origin chore/bump-excalidraw-X.Y.Z
-   gh pr create --base develop --title "chore(deps): bump @emevart/excalidraw to X.Y.Z"
-   ```
-
-8. После merge в `develop` -> поезд `develop -> main` -> staging авто. **Прод-тег делает founder вручную.**
-
-## Gotchas
-
-- **Параллельная сессия.** `H:\billion-dollars` -- общий чекаут. Перед `git checkout` посмотреть `git branch --show-current`: если там чужая ветка, работать в worktree либо вернуть и ветку, **и `node_modules`** (после `npm install` там останется новая версия, а чужой `package.json` будет ждать старую -- расхождение молчаливое).
-- **EPERM на Windows** при `npm install`, если поднят dev-сервер.
-- **`npm ci` lock-sync** -- коммитить ОБЕ `package.json` и `package-lock.json`, иначе CI падает.
-- **Whiteboard route -- `(app)/boards/`**. Смоук: `/boards/<code>`.
-- **Живая приёмка тач-жестов -- только на устройстве.** Зелёные тесты её не заменяют (`docs/touch-gestures.md`).
-- Если stale-кэш: `rm -rf node_modules/.cache && npm install`.
+EPERM исправляй через процессы своей задачи, не остановкой чужого сервера. Не удаляй общие caches/node_modules для устранения проблемы чужого checkout.

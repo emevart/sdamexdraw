@@ -1,8 +1,5 @@
 {
   "plansDirectory": ".claude/plans",
-  "worktree": {
-    "symlinkDirectories": ["node_modules", ".yarn"]
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -10,15 +7,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash H:/excalidraw/.claude/hooks/block-force-push-master.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-force-push-master.sh\""
           },
           {
             "type": "command",
-            "command": "bash H:/excalidraw/.claude/hooks/block-rm-rf-critical.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-rm-rf-critical.sh\""
           },
           {
             "type": "command",
-            "command": "bash H:/excalidraw/.claude/hooks/warn-publish-without-changelog.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-publish-without-changelog.sh\""
           }
         ]
       }
@@ -29,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash H:/excalidraw/.claude/hooks/eslint-fix.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/eslint-fix.sh\""
           }
         ]
       },
@@ -38,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash H:/excalidraw/.claude/hooks/check-changelog.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-changelog.sh\""
           }
         ]
       }

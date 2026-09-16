@@ -108,6 +108,7 @@
     "collaborators": "Collaborators",
     "toggleGrid": "Toggle grid",
     "gridSnap": "Grid snapping",
+    "pressureSensitivity": "Pressure-sensitive stroke width",
     "addToLibrary": "Add to library",
     "removeFromLibrary": "Remove from library",
     "libraryLoadingMessage": "Loading library…",

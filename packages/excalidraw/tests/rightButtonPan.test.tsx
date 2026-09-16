@@ -104,7 +104,7 @@ describe("right mouse button pans the canvas (#881)", () => {
     expect(h.state.selectedElementIds).toEqual({ [rect.id]: true });
   });
 
-  it("pen secondary (barrel) button is reserved for the context menu — no pan", () => {
+  it("pen secondary (barrel) drag pans and suppresses the context menu", () => {
     const { scrollX, scrollY } = h.state;
     const canvas = GlobalTestState.interactiveCanvas;
 
@@ -118,8 +118,14 @@ describe("right mouse button pans the canvas (#881)", () => {
       pointerEvent({ pointerType: "pen", clientX: 380, clientY: 380 }),
     );
 
-    expect(h.state.scrollX).toBe(scrollX);
-    expect(h.state.scrollY).toBe(scrollY);
+    fireEvent.contextMenu(
+      canvas,
+      pointerEvent({ pointerType: "pen", clientX: 380, clientY: 380 }),
+    );
+
+    expect(h.state.scrollX).not.toBe(scrollX);
+    expect(h.state.scrollY).not.toBe(scrollY);
+    expect(h.state.contextMenu).toBeNull();
   });
 
   it("left-drag drawing still works after a right-drag pan", () => {

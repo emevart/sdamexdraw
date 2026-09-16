@@ -442,6 +442,25 @@ const PreferencesToggleToolLockItem = () => {
   );
 };
 
+export const PreferencesTogglePressureSensitivityItem = () => {
+  const { t } = useI18n();
+  const appState = useUIAppState();
+  const setAppState = useExcalidrawSetAppState();
+  const enabled = appState.pressureSensitivityEnabled !== false;
+
+  return (
+    <DropdownMenuItemCheckbox
+      checked={enabled}
+      onSelect={(event) => {
+        setAppState({ pressureSensitivityEnabled: !enabled });
+        event.preventDefault();
+      }}
+    >
+      {t("labels.pressureSensitivity")}
+    </DropdownMenuItemCheckbox>
+  );
+};
+
 const PreferencesBoxSelectionModeItem = () => {
   const { t } = useI18n();
   const appState = useUIAppState();
@@ -658,6 +677,7 @@ export const Preferences = ({
           <>
             <PreferencesBoxSelectionModeItem />
             <PreferencesToggleToolLockItem />
+            <PreferencesTogglePressureSensitivityItem />
             <PreferencesToggleSnapModeItem />
             <PreferencesToggleGridModeItem />
             <PreferencesToggleGridSnapItem />
@@ -676,6 +696,8 @@ export const Preferences = ({
 };
 
 Preferences.ToggleToolLock = PreferencesToggleToolLockItem;
+Preferences.TogglePressureSensitivity =
+  PreferencesTogglePressureSensitivityItem;
 Preferences.BoxSelectionMode = PreferencesBoxSelectionModeItem;
 Preferences.ToggleSnapMode = PreferencesToggleSnapModeItem;
 Preferences.ToggleArrowBinding = PreferencesToggleArrowBindingItem;

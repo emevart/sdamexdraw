@@ -185,6 +185,7 @@ const APP_STATE_STORAGE_CONF = (<
   preferredSelectionTool: { browser: true, export: false, server: false },
   penMode: { browser: true, export: false, server: false },
   penDetected: { browser: true, export: false, server: false },
+  pressureSensitivityEnabled: { browser: true, export: false, server: false },
   errorMessage: { browser: false, export: false, server: false },
   exportBackground: { browser: true, export: false, server: false },
   exportEmbedScene: { browser: true, export: false, server: false },

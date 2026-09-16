@@ -108,6 +108,7 @@
     "collaborators": "Участники",
     "toggleGrid": "Переключить сетку",
     "gridSnap": "Привязка к сетке",
+    "pressureSensitivity": "Толщина зависит от нажима",
     "addToLibrary": "Добавить в библиотеку",
     "removeFromLibrary": "Удалить из библиотеки",
     "libraryLoadingMessage": "Загрузка библиотеки…",

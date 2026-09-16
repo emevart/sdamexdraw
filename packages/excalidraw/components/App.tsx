@@ -367,7 +367,11 @@ import { ActionManager } from "../actions/manager";
 import { actions } from "../actions/register";
 import { getShortcutFromShortcutName } from "../actions/shortcuts";
 import { trackEvent } from "../analytics";
-import { computeStraightenResult, pathLength } from "../straighten";
+import {
+  computeStraightenResult,
+  getFreedrawTransformScale,
+  pathLength,
+} from "../straighten";
 import {
   getDefaultAppState,
   isEraserActive,
@@ -9161,12 +9165,11 @@ class App extends React.Component<AppProps, AppState> {
       // #2598: a finger landing on the selection drags it instead of panning.
       !this.isPenModeFingerOnSelection(event);
 
-    // #881: right-drag = pan, right-click = context menu. Only a real mouse —
-    // the pen barrel (secondary) button is reserved for forcing the context
-    // menu open (see handleCanvasContextMenu).
-    const isRightButtonPan =
+    // #881: secondary-button drag = pan, secondary-button click = context
+    // menu. This applies to both a mouse right button and a pen barrel button.
+    const isButtonPan =
       "pointerType" in event &&
-      event.pointerType === "mouse" &&
+      (event.pointerType === "mouse" || event.pointerType === "pen") &&
       event.button === POINTER_BUTTON.SECONDARY;
 
     if (
@@ -9174,7 +9177,7 @@ class App extends React.Component<AppProps, AppState> {
         gesture.pointers.size <= 1 &&
         (event.button === POINTER_BUTTON.WHEEL ||
           (event.button === POINTER_BUTTON.MAIN && isHoldingSpace) ||
-          isRightButtonPan ||
+          isButtonPan ||
           isHandToolActive(this.state) ||
           isPenModeTouchPan ||
           (this.state.viewModeEnabled &&
@@ -9183,14 +9186,14 @@ class App extends React.Component<AppProps, AppState> {
     ) {
       return false;
     }
-    // #881: the right button only ARMS a pan — no side effects (cursor,
+    // #881: the secondary button only ARMS a pan — no side effects (cursor,
     // isPanning, preventDefault) until the drag threshold is crossed in
     // onPointerMove below, so a plain right-click stays a pure context-menu
     // gesture. All other triggers pan immediately, as before.
     this.rightClickPanned = false;
     const armX = event.clientX;
     const armY = event.clientY;
-    if (!isRightButtonPan) {
+    if (!isButtonPan) {
       isPanning = true;
     }
 
@@ -9209,7 +9212,7 @@ class App extends React.Component<AppProps, AppState> {
           }
         : null;
 
-    if (!isRightButtonPan) {
+    if (!isButtonPan) {
       // due to event.preventDefault below, container wouldn't get focus
       // automatically
       this.focusContainer();
@@ -9230,7 +9233,7 @@ class App extends React.Component<AppProps, AppState> {
         ? false
         : /Linux/.test(window.navigator.platform);
 
-    if (!isRightButtonPan) {
+    if (!isButtonPan) {
       setCursor(this.interactiveCanvas, CURSOR_TYPE.GRABBING);
     }
     // The pointer that started this pan owns it. A second contact (e.g. a
@@ -9263,10 +9266,10 @@ class App extends React.Component<AppProps, AppState> {
         lastY = event.clientY;
         return;
       }
-      // #881: armed right-button pan activates only past the drag threshold —
+      // #881: armed secondary-button pan activates only past the drag threshold —
       // below it we just track coords so the eventual pan starts without a
       // jump. Once activated, the release must not open the context menu.
-      if (isRightButtonPan && !isPanning) {
+      if (isButtonPan && !isPanning) {
         if (
           Math.hypot(event.clientX - armX, event.clientY - armY) <
           DRAGGING_THRESHOLD
@@ -10200,7 +10203,8 @@ class App extends React.Component<AppProps, AppState> {
       y: gridY,
     });
 
-    const simulatePressure = event.pressure === 0.5;
+    const simulatePressure =
+      this.state.pressureSensitivityEnabled === false || event.pressure === 0.5;
 
     const element = newFreeDrawElement({
       type: elementType,
@@ -10326,7 +10330,7 @@ class App extends React.Component<AppProps, AppState> {
           cursorX - transformAnchor.x,
         );
         transformInitialDist = Math.max(
-          1,
+          0.01,
           pointDistance(
             pointFrom(cursorX, cursorY),
             pointFrom(transformAnchor.x, transformAnchor.y),
@@ -12071,13 +12075,17 @@ class App extends React.Component<AppProps, AppState> {
             const cursorX = pointerCoords.x;
             const cursorY = pointerCoords.y;
 
-            // Dead zone: ignore tiny movements on touch
+            // Keep a small relative dead zone so tiny marks can still shrink.
             if (transformEntryPos) {
               const entryDist = Math.sqrt(
                 (cursorX - transformEntryPos.x) ** 2 +
                   (cursorY - transformEntryPos.y) ** 2,
               );
-              if (entryDist < 5) {
+              const entryThreshold = Math.min(
+                5,
+                Math.max(0.5, transformInitialDist * 0.25),
+              );
+              if (entryDist < entryThreshold) {
                 return;
               }
             }
@@ -12087,7 +12095,7 @@ class App extends React.Component<AppProps, AppState> {
               cursorX - transformAnchor.x,
             );
             const currentDist = Math.max(
-              1,
+              0.01,
               Math.sqrt(
                 (cursorX - transformAnchor.x) ** 2 +
                   (cursorY - transformAnchor.y) ** 2,
@@ -12095,9 +12103,9 @@ class App extends React.Component<AppProps, AppState> {
             );
 
             const deltaAngle = currentAngle - transformInitialAngle;
-            const scale = Math.max(
-              0.1,
-              Math.min(10, currentDist / transformInitialDist),
+            const scale = getFreedrawTransformScale(
+              currentDist,
+              transformInitialDist,
             );
             const cos = Math.cos(deltaAngle);
             const sin = Math.sin(deltaAngle);

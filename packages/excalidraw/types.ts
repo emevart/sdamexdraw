@@ -412,6 +412,8 @@ export interface AppState {
   // Pen handling
   penMode: boolean;
   penDetected: boolean;
+  /** Whether stylus pressure controls freedraw stroke width (defaults to true). */
+  pressureSensitivityEnabled?: boolean;
 
   exportBackground: boolean;
   exportEmbedScene: boolean;

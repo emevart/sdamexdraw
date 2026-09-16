@@ -54,6 +54,30 @@ const GridLineColor = {
   },
 } as const;
 
+const positiveModulo = (value: number, modulus: number): number =>
+  ((value % modulus) + modulus) % modulus;
+
+/**
+ * Check the bold-grid phase using a reduced scroll offset. Keeping the large
+ * scroll value out of the subtraction avoids precision loss far from origin.
+ */
+export const isGridLineBold = (
+  coordinate: number,
+  scroll: number,
+  gridSize: number,
+  gridStep: number,
+): boolean => {
+  if (gridStep <= 1) {
+    return false;
+  }
+
+  const period = gridStep * gridSize;
+  const remainder = positiveModulo(scroll, period);
+  const distance = positiveModulo(coordinate - remainder, period);
+  const tolerance = 1e-6;
+  return distance < tolerance || period - distance < tolerance;
+};
+
 const strokeGrid = (
   context: CanvasRenderingContext2D,
   /** grid cell pixel size */
@@ -67,8 +91,8 @@ const strokeGrid = (
   width: number,
   height: number,
 ) => {
-  const offsetX = (scrollX % gridSize) - gridSize;
-  const offsetY = (scrollY % gridSize) - gridSize;
+  const offsetX = positiveModulo(scrollX, gridSize) - gridSize;
+  const offsetY = positiveModulo(scrollY, gridSize) - gridSize;
 
   const actualGridSize = gridSize * zoom.value;
 
@@ -86,8 +110,7 @@ const strokeGrid = (
 
   // vertical lines
   for (let x = offsetX; x < offsetX + width + gridSize * 2; x += gridSize) {
-    const isBold =
-      gridStep > 1 && Math.round(x - scrollX) % (gridStep * gridSize) === 0;
+    const isBold = isGridLineBold(x, scrollX, gridSize, gridStep);
     // don't render regular lines when zoomed out and they're barely visible
     if (!isBold && actualGridSize < 10) {
       continue;
@@ -108,8 +131,7 @@ const strokeGrid = (
   }
 
   for (let y = offsetY; y < offsetY + height + gridSize * 2; y += gridSize) {
-    const isBold =
-      gridStep > 1 && Math.round(y - scrollY) % (gridStep * gridSize) === 0;
+    const isBold = isGridLineBold(y, scrollY, gridSize, gridStep);
     if (!isBold && actualGridSize < 10) {
       continue;
     }

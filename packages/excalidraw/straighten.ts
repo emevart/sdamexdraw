@@ -50,6 +50,60 @@ export const pathLength = (points: readonly LocalPoint[]): number => {
   return len;
 };
 
+const AUTO_CLOSE_MIN_THRESHOLD = 1;
+const AUTO_CLOSE_MAX_RATIO = 0.12;
+
+/**
+ * Keep the close gesture proportional to the mark size. A fixed 30px gap
+ * makes compact strokes look closed even when the user only draws a small
+ * open mark.
+ */
+export const getAutoCloseThreshold = (
+  points: readonly LocalPoint[],
+): number => {
+  if (points.length === 0) {
+    return AUTO_CLOSE_MIN_THRESHOLD;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const [x, y] of points) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+
+  const diagonal = Math.hypot(maxX - minX, maxY - minY);
+  return Math.min(
+    STRAIGHTEN_CLOSE_THRESHOLD,
+    Math.max(AUTO_CLOSE_MIN_THRESHOLD, diagonal * AUTO_CLOSE_MAX_RATIO),
+  );
+};
+
+export const FREEDRAW_TRANSFORM_MIN_SCALE = 0.01;
+export const FREEDRAW_TRANSFORM_MAX_SCALE = 100;
+
+export const getFreedrawTransformScale = (
+  currentDistance: number,
+  initialDistance: number,
+): number => {
+  const safeInitialDistance = Math.max(
+    FREEDRAW_TRANSFORM_MIN_SCALE,
+    initialDistance,
+  );
+  return Math.max(
+    FREEDRAW_TRANSFORM_MIN_SCALE,
+    Math.min(
+      FREEDRAW_TRANSFORM_MAX_SCALE,
+      currentDistance / safeInitialDistance,
+    ),
+  );
+};
+
 /**
  * Smooth points using a weighted moving average.
  * Preserves start and end points exactly.
@@ -356,7 +410,7 @@ export type StraightenResult = {
  * Compute straightening targets for a freedraw stroke.
  *
  * Flow:
- * 1. If gap < threshold → contract to close (ease-out pull)
+ * 1. If gap < a size-relative threshold → contract to close (ease-out pull)
  * 2. If open and low deviation → straighten to line
  * 3. Otherwise → detect corners, smooth segments between them
  */
@@ -371,15 +425,13 @@ export const computeStraightenResult = (
   const end = points[points.length - 1];
   const gapDist = pointDistance(start, end);
   const totalLen = pathLength(points);
+  const closeThreshold = getAutoCloseThreshold(points);
 
   // Step 1: Closure detection — contract if gap is small
   let isClosed = false;
   let workingPoints: LocalPoint[];
 
-  if (
-    gapDist < STRAIGHTEN_CLOSE_THRESHOLD &&
-    totalLen > STRAIGHTEN_CLOSE_THRESHOLD * 3
-  ) {
+  if (gapDist < closeThreshold && totalLen > STRAIGHTEN_CLOSE_THRESHOLD * 3) {
     workingPoints = contractToClose(points);
     isClosed = true;
   } else {

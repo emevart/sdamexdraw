@@ -13,6 +13,10 @@ Please add the latest change on the top under the correct section.
 
 ## Unreleased
 
+### Fixes
+
+- Улучшены дальняя работа с canvas и взаимодействие со стилусом: точнее сетка на экстремальном масштабе, безопаснее стирание перечёркиванием, добавлено панорамирование кнопкой стилуса, переключатель зависимости толщины от давления, расширен диапазон изменения размера свободных штрихов и исправлено соединение коротких штрихов [#11](https://github.com/emevart/sdamexdraw/pull/11).
+
 ## Excalidraw API
 
 ### Viewport control & scroll/zoom locking

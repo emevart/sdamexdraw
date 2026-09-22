@@ -11,6 +11,7 @@ import { isRenderThrottlingEnabled } from "../../reactUtils";
 import {
   cancelZoomRasterContinuation,
   renderStaticScene,
+  renderStaticSceneThrottled,
 } from "../../renderer/staticScene";
 
 import type {
@@ -46,7 +47,11 @@ const StaticCanvas = (props: StaticCanvasProps) => {
 
   useEffect(() => {
     const canvas = props.canvas;
-    return () => cancelZoomRasterContinuation(canvas);
+    return () => {
+      cancelZoomRasterContinuation(canvas);
+      // sdamex: drop only this canvas's pending throttled paint
+      renderStaticSceneThrottled.cancel(canvas);
+    };
   }, [props.canvas]);
 
   useEffect(() => {

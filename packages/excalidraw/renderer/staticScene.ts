@@ -3,7 +3,6 @@ import {
   COLOR_WHITE,
   FRAME_STYLE,
   THEME,
-  throttleRAF,
 } from "@excalidraw/common";
 import { isElementLink } from "@excalidraw/element";
 import { createPlaceholderEmbeddableLabel } from "@excalidraw/element";
@@ -572,10 +571,59 @@ const _renderStaticScene = (
   }
 };
 
-/** throttled to animation framerate */
-export const renderStaticSceneThrottled = throttleRAF(
-  (config: StaticSceneRenderConfig) => {
+/**
+ * sdamex: pending throttled static paints, one per canvas (latest config
+ * wins). Upstream used a single module-level `throttleRAF` whose latest args
+ * won across canvases, so with two editors on a page one editor's pending
+ * paint was dropped, and `Renderer.destroy()` cancelled every editor's. With
+ * the static canvas nonce that dropped paint no longer heals on the next
+ * scene notify.
+ */
+const pendingStaticScenes = new Map<
+  HTMLCanvasElement,
+  StaticSceneRenderConfig
+>();
+let pendingStaticScenesFrame: number | null = null;
+
+const flushPendingStaticScenes = () => {
+  if (pendingStaticScenesFrame !== null) {
+    cancelAnimationFrame(pendingStaticScenesFrame);
+    pendingStaticScenesFrame = null;
+  }
+  const configs = [...pendingStaticScenes.values()];
+  pendingStaticScenes.clear();
+  for (const config of configs) {
     _renderStaticScene(config);
+  }
+};
+
+/**
+ * throttled to animation framerate
+ *
+ * sdamex: per canvas, flushed by one `requestAnimationFrame` for all
+ * canvases; `cancel(canvas)` drops only that canvas's pending paint.
+ */
+export const renderStaticSceneThrottled = Object.assign(
+  (config: StaticSceneRenderConfig) => {
+    pendingStaticScenes.set(config.canvas, config);
+    if (pendingStaticScenesFrame === null) {
+      pendingStaticScenesFrame = requestAnimationFrame(() => {
+        pendingStaticScenesFrame = null;
+        flushPendingStaticScenes();
+      });
+    }
+  },
+  {
+    /** paints every pending canvas now */
+    flush: flushPendingStaticScenes,
+    /** drops the pending paint of this canvas, other canvases keep theirs */
+    cancel: (canvas: HTMLCanvasElement) => {
+      pendingStaticScenes.delete(canvas);
+      if (!pendingStaticScenes.size && pendingStaticScenesFrame !== null) {
+        cancelAnimationFrame(pendingStaticScenesFrame);
+        pendingStaticScenesFrame = null;
+      }
+    },
   },
 );
 

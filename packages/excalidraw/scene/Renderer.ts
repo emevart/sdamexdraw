@@ -19,8 +19,6 @@ import type {
 
 import type { Scene } from "@excalidraw/element";
 
-import { renderStaticSceneThrottled } from "../renderer/staticScene";
-
 import type { RenderableElementsMap } from "./types";
 
 import type { AppState } from "../types";
@@ -473,7 +471,9 @@ export class Renderer {
   // NOTE Doesn't destroy everything (scene, rc, etc.) because it may not be
   // safe to break TS contract here (for upstream cases)
   public destroy() {
-    renderStaticSceneThrottled.cancel();
+    // sdamex: no global cancel of throttled static paints here, it dropped
+    // other editors' pending paints; StaticCanvas cancels its own canvas's
+    // pending paint on unmount
     this._getRenderableElements.clear();
     this.staticContent = null;
   }

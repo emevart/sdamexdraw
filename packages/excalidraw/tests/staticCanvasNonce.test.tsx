@@ -2,7 +2,11 @@ import React from "react";
 import { vi } from "vitest";
 
 import { arrayToMap, reseed } from "@excalidraw/common";
-import { newElementWith, Scene } from "@excalidraw/element";
+import {
+  CaptureUpdateAction,
+  newElementWith,
+  Scene,
+} from "@excalidraw/element";
 import { pointFrom } from "@excalidraw/math";
 
 import type {
@@ -100,6 +104,42 @@ describe("static canvas repaint (sdamex)", () => {
     API.setElements([newElementWith(onScreen, { x: 20 }), offScreen]);
 
     expect(renderStaticScene).toHaveBeenCalled();
+  });
+
+  // e.g. SdamEx's live peer stroke preview: a new object on every frame with
+  // constant version and versionNonce, passed through `updateScene`
+  it("repaints when a visible element is replaced by a new object with the same version", () => {
+    const { onScreen, offScreen } = setupScene();
+    const replaced = { ...onScreen, width: 80 };
+
+    API.updateScene({
+      elements: [replaced, offScreen],
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+
+    const current = h.elements.find((element) => element.id === "on-screen");
+    expect(current).toBe(replaced);
+    expect(current?.version).toBe(onScreen.version);
+    expect(current?.versionNonce).toBe(onScreen.versionNonce);
+    expect(renderStaticScene).toHaveBeenCalled();
+  });
+
+  it("keeps the static canvas when an off-screen element is replaced by a new object with the same version", () => {
+    const { onScreen, offScreen } = setupScene();
+    const visibleElementsBefore = h.app.visibleElements;
+    const replaced = { ...offScreen, width: 80 };
+
+    API.updateScene({
+      elements: [onScreen, replaced],
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+
+    expect(h.elements.find((element) => element.id === "off-screen")).toBe(
+      replaced,
+    );
+    // the App did re-render: it recomputed the visible elements
+    expect(h.app.visibleElements).not.toBe(visibleElementsBefore);
+    expect(renderStaticScene).not.toHaveBeenCalled();
   });
 
   it("repaints when a visible element is mutated in place", () => {
@@ -262,6 +302,89 @@ describe("static content snapshot (sdamex)", () => {
       0,
     );
     allElementsMap.set(label.id, newElementWith(label, { text: "ab" }));
+
+    expect(
+      isSameStaticContent(snapshot, [arrow], renderMap, allElementsMap, 0),
+    ).toBe(false);
+  });
+
+  // a host may pass a new object without bumping the version (e.g. SdamEx's
+  // live peer stroke preview): identity counts as a change
+  it("detects a visible element replaced by a new object with equal fields", () => {
+    const a = API.createElement({ type: "rectangle", id: "a" });
+    const map = toMap([a]);
+    const snapshot = snapshotStaticContent([a], map, map, 0);
+    const replaced = { ...a, width: a.width + 10 };
+    const replacedMap = toMap([replaced]);
+
+    expect(
+      isSameStaticContent(snapshot, [replaced], replacedMap, replacedMap, 0),
+    ).toBe(false);
+  });
+
+  it("detects a containing frame replaced by a new object with equal fields", () => {
+    const frame = API.createElement({
+      type: "frame",
+      id: "frame",
+      x: -5000,
+    });
+    const child = API.createElement({
+      type: "rectangle",
+      id: "child",
+      frameId: frame.id,
+    });
+    const map = toMap([frame, child]);
+    const snapshot = snapshotStaticContent([child], map, map, 0);
+    const replacedMap = toMap([{ ...frame, x: -4000 }, child]);
+
+    expect(
+      isSameStaticContent(snapshot, [child], replacedMap, replacedMap, 0),
+    ).toBe(false);
+  });
+
+  it("detects a container's bound text replaced by a new object with equal fields", () => {
+    const container = API.createElement({
+      type: "rectangle",
+      id: "box",
+      boundElements: [{ type: "text", id: "label" }],
+    });
+    const label = API.createElement({
+      type: "text",
+      id: "label",
+      text: "old",
+      containerId: container.id,
+    });
+    const map = toMap([container, label]);
+    const snapshot = snapshotStaticContent([container], map, map, 0);
+    const replacedMap = toMap([container, { ...label, text: "new" }]);
+
+    expect(
+      isSameStaticContent(snapshot, [container], replacedMap, replacedMap, 0),
+    ).toBe(false);
+  });
+
+  it("detects an arrow label replaced by a new object with equal fields", () => {
+    const arrow = API.createElement({
+      type: "arrow",
+      id: "arrow",
+      boundElements: [{ type: "text", id: "arrow-label" }],
+    });
+    const label = API.createElement({
+      type: "text",
+      id: "arrow-label",
+      text: "a",
+      containerId: arrow.id,
+    });
+    // the label is only in the full scene map (being edited)
+    const renderMap = toMap([arrow]);
+    const allElementsMap = toMap([arrow, label]);
+    const snapshot = snapshotStaticContent(
+      [arrow],
+      renderMap,
+      allElementsMap,
+      0,
+    );
+    allElementsMap.set(label.id, { ...label, text: "ab" });
 
     expect(
       isSameStaticContent(snapshot, [arrow], renderMap, allElementsMap, 0),

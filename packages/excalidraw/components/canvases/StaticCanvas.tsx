@@ -118,14 +118,16 @@ const areEqual = (
   nextProps: StaticCanvasProps,
 ) => {
   if (
-    // sdamex: `canvasNonce` is the renderer's static canvas nonce. It changes
-    // whenever the visible elements (ids, order, version, versionNonce),
-    // their containing frames, the bound text drawn with each container
-    // (renderable map), arrow labels (full scene map) or a forced
-    // `scene.triggerUpdate()` change, so fresh `elementsMap` /
-    // `visibleElements` instances with the same content (e.g. a remote batch
-    // that touched only off-screen elements) no longer repaint the static
-    // canvas.
+    // sdamex: `canvasNonce` is the renderer's static canvas nonce
+    // (`StaticContentSnapshot` in scene/Renderer.ts). The static canvas
+    // repaints when any element the static paint reads (each visible
+    // element, its containing frame, a container's bound text, an arrow's
+    // label) changes object identity, `version` or `versionNonce`, when the
+    // visible id list or order changes, or on `scene.triggerUpdate()`. A host
+    // mutation that keeps the same object and the same version/versionNonce
+    // is not repainted by itself. Fresh `elementsMap` / `visibleElements`
+    // instances with the same content (e.g. a remote batch that touched only
+    // off-screen elements) therefore no longer repaint the static canvas.
     prevProps.canvasNonce !== nextProps.canvasNonce ||
     prevProps.scale !== nextProps.scale
   ) {

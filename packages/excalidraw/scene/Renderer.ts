@@ -42,23 +42,38 @@ type GetRenderableElementsOpts = {
 
 /**
  * sdamex: what the static canvas output depends on besides appState and
- * renderConfig, which StaticCanvas compares itself:
- * - the visible elements: ids, order, version, versionNonce;
- * - the frame that contains each of them (renderable map);
- * - the bound text drawn with each container (renderable map), even when the
+ * renderConfig, which StaticCanvas compares itself.
+ *
+ * Contract: the static canvas repaints when any element the static paint
+ * reads changes object identity, `version` or `versionNonce`, when the
+ * visible id list or order changes, or on `scene.triggerUpdate()`. A host
+ * mutation that keeps the same object and the same version/versionNonce is
+ * not repainted by itself.
+ *
+ * The elements the static paint reads:
+ * - each visible element, in order;
+ * - the frame that contains it (renderable map);
+ * - the bound text drawn with a container (renderable map), even when the
  *   text itself is not in the visible list;
- * - the label of each visible arrow (full scene map): the arrow punches its
- *   label hole from `allElementsMap`, also while the label is being edited
- *   and therefore left out of the renderable map;
- * - forced `scene.triggerUpdate()` calls.
+ * - the label of an arrow (full scene map): the arrow punches its label hole
+ *   from `allElementsMap`, also while the label is being edited and
+ *   therefore left out of the renderable map.
+ *
+ * Object identity covers a host that passes a new object without bumping the
+ * version (e.g. SdamEx's live peer stroke preview through `updateScene`);
+ * version and versionNonce cover an in-place `mutateElement`, which keeps
+ * the object. The arrays are parallel to the visible list.
  */
 export type StaticContentSnapshot = {
   forcedUpdateCount: number;
-  ids: string[];
+  elements: NonDeletedExcalidrawElement[];
   versions: number[];
   versionNonces: number[];
+  frames: (ExcalidrawElement | null)[];
   frameVersionNonces: (number | null)[];
+  boundTexts: (ExcalidrawElement | null)[];
   boundTextVersionNonces: (number | null)[];
+  arrowLabels: (ExcalidrawElement | null)[];
   arrowLabelVersionNonces: (number | null)[];
 };
 
@@ -69,47 +84,56 @@ export type StaticContentSnapshot = {
  */
 let staticCanvasNonceCounter = 0;
 
-const getFrameVersionNonce = (
+const getFrame = (
   element: NonDeletedExcalidrawElement,
   elementsMap: NonDeletedElementsMap,
-) =>
-  element.frameId
-    ? elementsMap.get(element.frameId)?.versionNonce ?? null
-    : null;
+): ExcalidrawElement | null =>
+  element.frameId ? elementsMap.get(element.frameId) ?? null : null;
 
-const getBoundTextVersionNonce = (
-  element: NonDeletedExcalidrawElement,
-  elementsMap: NonDeletedElementsMap,
-) => getBoundTextElement(element, elementsMap)?.versionNonce ?? null;
-
-const getArrowLabelVersionNonce = (
+const getArrowLabel = (
   element: NonDeletedExcalidrawElement,
   allElementsMap: NonDeletedElementsMap | NonDeletedSceneElementsMap,
-) =>
-  isArrowElement(element)
-    ? getBoundTextElement(element, allElementsMap)?.versionNonce ?? null
-    : null;
+): ExcalidrawElement | null =>
+  isArrowElement(element) ? getBoundTextElement(element, allElementsMap) : null;
+
+const getVersionNonce = (element: ExcalidrawElement | null) =>
+  element?.versionNonce ?? null;
+
+/** sdamex: same object and same versionNonce as in the snapshot */
+const isSameDependency = (
+  current: ExcalidrawElement | null,
+  previous: ExcalidrawElement | null,
+  previousVersionNonce: number | null,
+) => current === previous && getVersionNonce(current) === previousVersionNonce;
 
 export const snapshotStaticContent = (
   visibleElements: readonly NonDeletedExcalidrawElement[],
   elementsMap: NonDeletedElementsMap,
   allElementsMap: NonDeletedElementsMap | NonDeletedSceneElementsMap,
   forcedUpdateCount: number,
-): StaticContentSnapshot => ({
-  forcedUpdateCount,
-  ids: visibleElements.map((element) => element.id),
-  versions: visibleElements.map((element) => element.version),
-  versionNonces: visibleElements.map((element) => element.versionNonce),
-  frameVersionNonces: visibleElements.map((element) =>
-    getFrameVersionNonce(element, elementsMap),
-  ),
-  boundTextVersionNonces: visibleElements.map((element) =>
-    getBoundTextVersionNonce(element, elementsMap),
-  ),
-  arrowLabelVersionNonces: visibleElements.map((element) =>
-    getArrowLabelVersionNonce(element, allElementsMap),
-  ),
-});
+): StaticContentSnapshot => {
+  const frames = visibleElements.map((element) =>
+    getFrame(element, elementsMap),
+  );
+  const boundTexts = visibleElements.map((element) =>
+    getBoundTextElement(element, elementsMap),
+  );
+  const arrowLabels = visibleElements.map((element) =>
+    getArrowLabel(element, allElementsMap),
+  );
+  return {
+    forcedUpdateCount,
+    elements: visibleElements.slice(),
+    versions: visibleElements.map((element) => element.version),
+    versionNonces: visibleElements.map((element) => element.versionNonce),
+    frames,
+    frameVersionNonces: frames.map(getVersionNonce),
+    boundTexts,
+    boundTextVersionNonces: boundTexts.map(getVersionNonce),
+    arrowLabels,
+    arrowLabelVersionNonces: arrowLabels.map(getVersionNonce),
+  };
+};
 
 export const isSameStaticContent = (
   snapshot: StaticContentSnapshot,
@@ -120,22 +144,32 @@ export const isSameStaticContent = (
 ): boolean => {
   if (
     snapshot.forcedUpdateCount !== forcedUpdateCount ||
-    snapshot.ids.length !== visibleElements.length
+    snapshot.elements.length !== visibleElements.length
   ) {
     return false;
   }
   for (let index = 0; index < visibleElements.length; index++) {
     const element = visibleElements[index];
     if (
-      element.id !== snapshot.ids[index] ||
+      // a different object also covers a different id (list or order change)
+      element !== snapshot.elements[index] ||
       element.version !== snapshot.versions[index] ||
       element.versionNonce !== snapshot.versionNonces[index] ||
-      getFrameVersionNonce(element, elementsMap) !==
-        snapshot.frameVersionNonces[index] ||
-      getBoundTextVersionNonce(element, elementsMap) !==
-        snapshot.boundTextVersionNonces[index] ||
-      getArrowLabelVersionNonce(element, allElementsMap) !==
-        snapshot.arrowLabelVersionNonces[index]
+      !isSameDependency(
+        getFrame(element, elementsMap),
+        snapshot.frames[index],
+        snapshot.frameVersionNonces[index],
+      ) ||
+      !isSameDependency(
+        getBoundTextElement(element, elementsMap),
+        snapshot.boundTexts[index],
+        snapshot.boundTextVersionNonces[index],
+      ) ||
+      !isSameDependency(
+        getArrowLabel(element, allElementsMap),
+        snapshot.arrowLabels[index],
+        snapshot.arrowLabelVersionNonces[index],
+      )
     ) {
       return false;
     }
@@ -321,13 +355,14 @@ export class Renderer {
 
   /**
    * sdamex: nonce for the static canvas. It changes only when the static
-   * output can change for element reasons (see `StaticContentSnapshot`):
-   * the visible elements (ids, order, version, versionNonce), their
-   * containing frames, the bound text drawn with each container (renderable
-   * map), arrow labels (full scene map), or an explicit
-   * `scene.triggerUpdate()`. A remote batch that touched only off-screen
-   * elements keeps it, so the static canvas is not repainted. Viewport and
-   * other appState changes are compared by StaticCanvas itself.
+   * output can change for element reasons (see `StaticContentSnapshot` for
+   * the contract): an element the static paint reads (visible elements,
+   * their containing frames, the bound text drawn with each container,
+   * arrow labels) changed object, version or versionNonce, the visible id
+   * list or order changed, or an explicit `scene.triggerUpdate()` ran. A
+   * remote batch that touched only off-screen elements keeps it, so the
+   * static canvas is not repainted. Viewport and other appState changes are
+   * compared by StaticCanvas itself.
    */
   private getStaticCanvasNonce(
     visibleElements: readonly NonDeletedExcalidrawElement[],

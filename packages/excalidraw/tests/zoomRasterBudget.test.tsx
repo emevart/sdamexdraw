@@ -191,4 +191,37 @@ describe("zoom re-rasterization budget (sdamex)", () => {
     expect(zoomOf(b)).toBe(2);
     expect(frames).toHaveLength(0);
   });
+
+  // e.g. a peer drawing: a fresh paint every frame cancels the continuation
+  // before it runs
+  it("makes progress in every fresh paint after a deferral while the budget stays exhausted", () => {
+    const canvas = document.createElement("canvas");
+    const [a, b] = twoRectangles();
+    paint(canvas, [a, b], 1);
+
+    exhaustBudget();
+    paint(canvas, [a, b], 2);
+    expect(zoomOf(a)).toBe(1);
+    expect(zoomOf(b)).toBe(1);
+    expect(frames).toHaveLength(1);
+
+    paint(canvas, [a, b], 2);
+    expect(cancelled).toContain(1);
+    expect(zoomOf(a)).toBe(2);
+    expect(zoomOf(b)).toBe(1);
+    expect(frames).toHaveLength(2);
+
+    paint(canvas, [a, b], 2);
+    expect(cancelled).toContain(2);
+    expect(zoomOf(b)).toBe(2);
+    // converged: nothing deferred, no new continuation
+    expect(frames).toHaveLength(2);
+
+    // the canvas has no deferred work left: a fresh paint budgets the whole
+    // pass again
+    paint(canvas, [a, b], 3);
+    expect(zoomOf(a)).toBe(2);
+    expect(zoomOf(b)).toBe(2);
+    expect(frames).toHaveLength(3);
+  });
 });

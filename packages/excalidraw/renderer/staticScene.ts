@@ -512,15 +512,24 @@ const paintStaticScene = ({
 
 /**
  * sdamex: per-pass budget for re-rasterizing element canvases after zoom
- * (see `beginZoomRasterBudget`). The first pass budgets the whole pass
- * (bootstrap, grid, drawing every visible element); a continuation pass
- * budgets regeneration work only and always regenerates at least one
- * canvas, so it keeps making progress even when the rest of the pass alone
- * exceeds this many milliseconds.
+ * (see `beginZoomRasterBudget`). A pass on a canvas without deferred zoom
+ * work budgets the whole pass (bootstrap, grid, drawing every visible
+ * element). Once a pass deferred work, every later pass of that canvas (its
+ * continuation or a fresh paint) budgets regeneration work only and always
+ * regenerates at least one canvas, so it keeps making progress even when the
+ * rest of the pass alone exceeds this many milliseconds, and even when a
+ * fresh paint every frame (a peer drawing, a local drag) keeps cancelling
+ * the continuation.
  */
 export const ZOOM_RASTER_BUDGET_MS = 8;
 
 const zoomRasterContinuations = new Map<HTMLCanvasElement, number>();
+
+/**
+ * sdamex: canvases whose last pass deferred zoom regenerations; cleared by a
+ * pass that completes with nothing deferred.
+ */
+const canvasesWithDeferredZoomWork = new WeakSet<HTMLCanvasElement>();
 
 /** sdamex: drops a scheduled continuation paint for this canvas. */
 export const cancelZoomRasterContinuation = (
@@ -536,10 +545,7 @@ export const cancelZoomRasterContinuation = (
   }
 };
 
-const _renderStaticScene = (
-  config: StaticSceneRenderConfig,
-  isContinuation = false,
-) => {
+const _renderStaticScene = (config: StaticSceneRenderConfig) => {
   const { canvas, renderConfig } = config;
 
   if (canvas === null || renderConfig.isExporting) {
@@ -550,9 +556,12 @@ const _renderStaticScene = (
   // sdamex: a fresh paint supersedes a scheduled continuation
   cancelZoomRasterContinuation(canvas);
 
-  // sdamex: a continuation uses a lazy deadline so it always regenerates at
-  // least one stale canvas (see the doc comment on `zoomRasterBudget`)
-  beginZoomRasterBudget(ZOOM_RASTER_BUDGET_MS, { lazy: isContinuation });
+  // sdamex: any pass on a canvas with deferred zoom work (continuation or
+  // fresh paint) uses a lazy deadline so it always regenerates at least one
+  // stale canvas (see the doc comment on `zoomRasterBudget`)
+  beginZoomRasterBudget(ZOOM_RASTER_BUDGET_MS, {
+    lazy: canvasesWithDeferredZoomWork.has(canvas),
+  });
   let deferred = false;
   try {
     paintStaticScene(config);
@@ -561,13 +570,16 @@ const _renderStaticScene = (
   }
 
   if (deferred) {
+    canvasesWithDeferredZoomWork.add(canvas);
     zoomRasterContinuations.set(
       canvas,
       requestAnimationFrame(() => {
         zoomRasterContinuations.delete(canvas);
-        _renderStaticScene(config, true);
+        _renderStaticScene(config);
       }),
     );
+  } else {
+    canvasesWithDeferredZoomWork.delete(canvas);
   }
 };
 

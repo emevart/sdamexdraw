@@ -547,13 +547,15 @@ export const elementWithCanvasCache = new WeakMap<
  * Canvases missing or stale for other reasons (element change, theme, crop,
  * frame opacity) are always regenerated.
  *
- * The first pass of a paint uses an eager deadline (`performance.now() +
- * budgetMs` at the start), which budgets the whole pass: bootstrap, grid and
- * drawing every visible element, not just regeneration. A continuation pass
- * (`lazy: true`) instead starts its deadline at the *first* zoom-stale
- * candidate it sees, and that first candidate always regenerates — so a
- * continuation budgets regeneration work only and always makes progress,
- * regardless of how long bootstrap/grid/cached-element drawing took.
+ * A pass on a canvas without deferred zoom work uses an eager deadline
+ * (`performance.now() + budgetMs` at the start), which budgets the whole
+ * pass: bootstrap, grid and drawing every visible element, not just
+ * regeneration. Any later pass on a canvas whose previous pass deferred work
+ * (its continuation or a fresh paint; `lazy: true`) instead starts its
+ * deadline at the *first* zoom-stale candidate it sees, and that first
+ * candidate always regenerates — so such a pass budgets regeneration work
+ * only and always makes progress, regardless of how long
+ * bootstrap/grid/cached-element drawing took.
  */
 let zoomRasterBudget: {
   budgetMs: number;

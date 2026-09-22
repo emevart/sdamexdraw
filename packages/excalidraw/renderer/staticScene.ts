@@ -512,9 +512,12 @@ const paintStaticScene = ({
 };
 
 /**
- * sdamex: frame-time share for re-rasterizing element canvases after zoom
- * (see `beginZoomRasterBudget`); the rest of the frame stays for the paint
- * itself and for input.
+ * sdamex: per-pass budget for re-rasterizing element canvases after zoom
+ * (see `beginZoomRasterBudget`). The first pass budgets the whole pass
+ * (bootstrap, grid, drawing every visible element); a continuation pass
+ * budgets regeneration work only and always regenerates at least one
+ * canvas, so it keeps making progress even when the rest of the pass alone
+ * exceeds this many milliseconds.
  */
 export const ZOOM_RASTER_BUDGET_MS = 8;
 
@@ -534,7 +537,10 @@ export const cancelZoomRasterContinuation = (
   }
 };
 
-const _renderStaticScene = (config: StaticSceneRenderConfig) => {
+const _renderStaticScene = (
+  config: StaticSceneRenderConfig,
+  isContinuation = false,
+) => {
   const { canvas, renderConfig } = config;
 
   if (canvas === null || renderConfig.isExporting) {
@@ -545,7 +551,9 @@ const _renderStaticScene = (config: StaticSceneRenderConfig) => {
   // sdamex: a fresh paint supersedes a scheduled continuation
   cancelZoomRasterContinuation(canvas);
 
-  beginZoomRasterBudget(ZOOM_RASTER_BUDGET_MS);
+  // sdamex: a continuation uses a lazy deadline so it always regenerates at
+  // least one stale canvas (see the doc comment on `zoomRasterBudget`)
+  beginZoomRasterBudget(ZOOM_RASTER_BUDGET_MS, { lazy: isContinuation });
   let deferred = false;
   try {
     paintStaticScene(config);
@@ -558,7 +566,7 @@ const _renderStaticScene = (config: StaticSceneRenderConfig) => {
       canvas,
       requestAnimationFrame(() => {
         zoomRasterContinuations.delete(canvas);
-        _renderStaticScene(config);
+        _renderStaticScene(config, true);
       }),
     );
   }

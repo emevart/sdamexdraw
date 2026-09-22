@@ -170,4 +170,25 @@ describe("zoom re-rasterization budget (sdamex)", () => {
 
     expect(frames).toHaveLength(0);
   });
+
+  it("makes progress in every continuation while the budget stays exhausted", () => {
+    const canvas = document.createElement("canvas");
+    const [a, b] = twoRectangles();
+    paint(canvas, [a, b], 1);
+
+    exhaustBudget();
+    paint(canvas, [a, b], 2);
+    expect(zoomOf(a)).toBe(1);
+    expect(zoomOf(b)).toBe(1);
+    expect(frames).toHaveLength(1);
+
+    frames.shift()!(0);
+    expect(zoomOf(a)).toBe(2);
+    expect(zoomOf(b)).toBe(1);
+    expect(frames).toHaveLength(1);
+
+    frames.shift()!(0);
+    expect(zoomOf(b)).toBe(2);
+    expect(frames).toHaveLength(0);
+  });
 });

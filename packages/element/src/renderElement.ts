@@ -546,8 +546,20 @@ export const elementWithCanvasCache = new WeakMap<
  * static scene paints again on the next frame until nothing is deferred.
  * Canvases missing or stale for other reasons (element change, theme, crop,
  * frame opacity) are always regenerated.
+ *
+ * The first pass of a paint uses an eager deadline (`performance.now() +
+ * budgetMs` at the start), which budgets the whole pass: bootstrap, grid and
+ * drawing every visible element, not just regeneration. A continuation pass
+ * (`lazy: true`) instead starts its deadline at the *first* zoom-stale
+ * candidate it sees, and that first candidate always regenerates — so a
+ * continuation budgets regeneration work only and always makes progress,
+ * regardless of how long bootstrap/grid/cached-element drawing took.
  */
-let zoomRasterBudget: { deadline: number; deferred: boolean } | null = null;
+let zoomRasterBudget: {
+  budgetMs: number;
+  deadline: number | null;
+  deferred: boolean;
+} | null = null;
 
 // sdamex: the budget runs on the real clock, so upstream test suites would
 // otherwise defer regeneration on a slow run and become non-deterministic.
@@ -559,13 +571,17 @@ export const setZoomRasterBudgetForTests = (enabled: boolean) => {
   zoomRasterBudgetEnabled = enabled;
 };
 
-export const beginZoomRasterBudget = (budgetMs: number) => {
+export const beginZoomRasterBudget = (
+  budgetMs: number,
+  { lazy = false }: { lazy?: boolean } = {},
+) => {
   if (!zoomRasterBudgetEnabled) {
     zoomRasterBudget = null;
     return;
   }
   zoomRasterBudget = {
-    deadline: performance.now() + budgetMs,
+    budgetMs,
+    deadline: lazy ? null : performance.now() + budgetMs,
     deferred: false,
   };
 };
@@ -578,7 +594,17 @@ export const endZoomRasterBudget = (): boolean => {
 };
 
 const shouldDeferZoomRegeneration = () => {
-  if (!zoomRasterBudget || performance.now() < zoomRasterBudget.deadline) {
+  if (!zoomRasterBudget) {
+    return false;
+  }
+  const now = performance.now();
+  if (zoomRasterBudget.deadline === null) {
+    // lazy budget: the first zoom-stale canvas of the pass always
+    // regenerates, so a continuation always makes progress
+    zoomRasterBudget.deadline = now + zoomRasterBudget.budgetMs;
+    return false;
+  }
+  if (now < zoomRasterBudget.deadline) {
     return false;
   }
   zoomRasterBudget.deferred = true;

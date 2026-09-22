@@ -8,7 +8,10 @@ import type {
 } from "@excalidraw/element/types";
 
 import { isRenderThrottlingEnabled } from "../../reactUtils";
-import { renderStaticScene } from "../../renderer/staticScene";
+import {
+  cancelZoomRasterContinuation,
+  renderStaticScene,
+} from "../../renderer/staticScene";
 
 import type {
   RenderableElementsMap,
@@ -40,6 +43,11 @@ const StaticCanvas = (props: StaticCanvasProps) => {
     props.canvas.width = props.appState.width * props.scale;
     props.canvas.height = props.appState.height * props.scale;
   }, [props.appState.height, props.appState.width, props.canvas, props.scale]);
+
+  useEffect(() => {
+    const canvas = props.canvas;
+    return () => cancelZoomRasterContinuation(canvas);
+  }, [props.canvas]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;

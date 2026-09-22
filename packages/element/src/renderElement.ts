@@ -24,6 +24,7 @@ import {
   invariant,
   applyDarkModeFilter,
   isSafari,
+  isTestEnv,
 } from "@excalidraw/common";
 
 import type {
@@ -536,6 +537,54 @@ export const elementWithCanvasCache = new WeakMap<
   ExcalidrawElementWithCanvas
 >();
 
+/**
+ * sdamex: per-pass budget for re-rasterizing cached element canvases after a
+ * zoom change. Upstream regenerates every visible element's canvas in the
+ * first static paint after the zoom settles, which freezes big boards for
+ * the whole pass. Inside a budget, once the deadline passes, zoom-only
+ * regenerations are deferred and the stale canvas is drawn scaled; the
+ * static scene paints again on the next frame until nothing is deferred.
+ * Canvases missing or stale for other reasons (element change, theme, crop,
+ * frame opacity) are always regenerated.
+ */
+let zoomRasterBudget: { deadline: number; deferred: boolean } | null = null;
+
+// sdamex: the budget runs on the real clock, so upstream test suites would
+// otherwise defer regeneration on a slow run and become non-deterministic.
+// It stays off by default under `isTestEnv()`; tests that exercise it opt in
+// explicitly via `setZoomRasterBudgetForTests`.
+let zoomRasterBudgetEnabled = !isTestEnv();
+
+export const setZoomRasterBudgetForTests = (enabled: boolean) => {
+  zoomRasterBudgetEnabled = enabled;
+};
+
+export const beginZoomRasterBudget = (budgetMs: number) => {
+  if (!zoomRasterBudgetEnabled) {
+    zoomRasterBudget = null;
+    return;
+  }
+  zoomRasterBudget = {
+    deadline: performance.now() + budgetMs,
+    deferred: false,
+  };
+};
+
+/** Ends the pass budget; returns true if some regenerations were deferred. */
+export const endZoomRasterBudget = (): boolean => {
+  const deferred = zoomRasterBudget?.deferred ?? false;
+  zoomRasterBudget = null;
+  return deferred;
+};
+
+const shouldDeferZoomRegeneration = () => {
+  if (!zoomRasterBudget || performance.now() < zoomRasterBudget.deadline) {
+    return false;
+  }
+  zoomRasterBudget.deferred = true;
+  return true;
+};
+
 const generateElementWithCanvas = (
   element: NonDeletedExcalidrawElement,
   elementsMap: NonDeletedSceneElementsMap,
@@ -557,13 +606,22 @@ const generateElementWithCanvas = (
   const containingFrameOpacity =
     getContainingFrame(element, elementsMap)?.opacity || 100;
 
-  if (
+  const needsRegenerationRegardlessOfZoom =
     !prevElementWithCanvas ||
-    shouldRegenerateBecauseZoom ||
     prevElementWithCanvas.theme !== appState.theme ||
     prevElementWithCanvas.imageCrop !== imageCrop ||
-    prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity
+    prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity;
+
+  if (
+    prevElementWithCanvas &&
+    shouldRegenerateBecauseZoom &&
+    !needsRegenerationRegardlessOfZoom &&
+    shouldDeferZoomRegeneration()
   ) {
+    return prevElementWithCanvas;
+  }
+
+  if (needsRegenerationRegardlessOfZoom || shouldRegenerateBecauseZoom) {
     const elementWithCanvas = generateElementCanvas(
       element,
       elementsMap,
@@ -922,6 +980,10 @@ export const renderElement = (
           // do not disable smoothing during zoom as blurry shapes look better
           // on low resolution (while still zooming in) than sharp ones
           !appState?.shouldCacheIgnoreZoom &&
+          // sdamex: a canvas kept from another zoom level (deferred
+          // re-rasterization) is scaled on draw; nearest-neighbour scaling
+          // breaks thin strokes and text, so keep smoothing on for it
+          elementWithCanvas.zoomValue === appState.zoom.value &&
           // angle is 0 -> always disable smoothing
           (!element.angle ||
             // or check if angle is a right angle in which case we can still

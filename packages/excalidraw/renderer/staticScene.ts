@@ -19,7 +19,11 @@ import {
   shouldApplyFrameClip,
 } from "@excalidraw/element";
 
-import { renderElement } from "@excalidraw/element";
+import {
+  beginZoomRasterBudget,
+  endZoomRasterBudget,
+  renderElement,
+} from "@excalidraw/element";
 
 import { getElementAbsoluteCoords } from "@excalidraw/element";
 
@@ -255,7 +259,7 @@ const renderLinkIcon = (
     context.restore();
   }
 };
-const _renderStaticScene = ({
+const paintStaticScene = ({
   canvas,
   rc,
   elementsMap,
@@ -507,6 +511,59 @@ const _renderStaticScene = ({
   });
 };
 
+/**
+ * sdamex: frame-time share for re-rasterizing element canvases after zoom
+ * (see `beginZoomRasterBudget`); the rest of the frame stays for the paint
+ * itself and for input.
+ */
+export const ZOOM_RASTER_BUDGET_MS = 8;
+
+const zoomRasterContinuations = new Map<HTMLCanvasElement, number>();
+
+/** sdamex: drops a scheduled continuation paint for this canvas. */
+export const cancelZoomRasterContinuation = (
+  canvas: HTMLCanvasElement | null,
+) => {
+  if (!canvas) {
+    return;
+  }
+  const id = zoomRasterContinuations.get(canvas);
+  if (id !== undefined) {
+    cancelAnimationFrame(id);
+    zoomRasterContinuations.delete(canvas);
+  }
+};
+
+const _renderStaticScene = (config: StaticSceneRenderConfig) => {
+  const { canvas, renderConfig } = config;
+
+  if (canvas === null || renderConfig.isExporting) {
+    paintStaticScene(config);
+    return;
+  }
+
+  // sdamex: a fresh paint supersedes a scheduled continuation
+  cancelZoomRasterContinuation(canvas);
+
+  beginZoomRasterBudget(ZOOM_RASTER_BUDGET_MS);
+  let deferred = false;
+  try {
+    paintStaticScene(config);
+  } finally {
+    deferred = endZoomRasterBudget();
+  }
+
+  if (deferred) {
+    zoomRasterContinuations.set(
+      canvas,
+      requestAnimationFrame(() => {
+        zoomRasterContinuations.delete(canvas);
+        _renderStaticScene(config);
+      }),
+    );
+  }
+};
+
 /** throttled to animation framerate */
 export const renderStaticSceneThrottled = throttleRAF(
   (config: StaticSceneRenderConfig) => {
@@ -521,6 +578,9 @@ export const renderStaticScene = (
   renderConfig: StaticSceneRenderConfig,
   throttle?: boolean,
 ) => {
+  // sdamex: a newer scene supersedes a scheduled continuation
+  cancelZoomRasterContinuation(renderConfig.canvas);
+
   if (throttle) {
     renderStaticSceneThrottled(renderConfig);
     return;

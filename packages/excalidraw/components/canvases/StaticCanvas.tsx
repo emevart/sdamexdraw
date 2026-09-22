@@ -111,11 +111,13 @@ const areEqual = (
 ) => {
   if (
     // sdamex: `canvasNonce` is the renderer's static canvas nonce. It changes
-    // whenever the visible elements (ids, order, versions), the frames that
-    // contain them, or a forced `scene.triggerUpdate()` change, so fresh
-    // `elementsMap` / `visibleElements` instances with the same content
-    // (e.g. a remote batch that touched only off-screen elements) no longer
-    // repaint the static canvas.
+    // whenever the visible elements (ids, order, version, versionNonce),
+    // their containing frames, the bound text drawn with each container
+    // (renderable map), arrow labels (full scene map) or a forced
+    // `scene.triggerUpdate()` change, so fresh `elementsMap` /
+    // `visibleElements` instances with the same content (e.g. a remote batch
+    // that touched only off-screen elements) no longer repaint the static
+    // canvas.
     prevProps.canvasNonce !== nextProps.canvasNonce ||
     prevProps.scale !== nextProps.scale
   ) {

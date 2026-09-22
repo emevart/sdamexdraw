@@ -2,6 +2,7 @@ import {
   getBoundTextElement,
   getCommonFrameId,
   getFrameChildrenInsertionIndex,
+  isArrowElement,
   isElementInViewport,
 } from "@excalidraw/element";
 
@@ -13,6 +14,7 @@ import type {
   NonDeleted,
   NonDeletedElementsMap,
   NonDeletedExcalidrawElement,
+  NonDeletedSceneElementsMap,
 } from "@excalidraw/element/types";
 
 import type { Scene } from "@excalidraw/element";
@@ -40,10 +42,15 @@ type GetRenderableElementsOpts = {
 
 /**
  * sdamex: what the static canvas output depends on besides appState and
- * renderConfig, which StaticCanvas compares itself. `elementsMap` is the
- * renderable map the static canvas gets: frames and bound texts are looked
- * up there, and a bound text is drawn with its container even when the text
- * itself is not in the visible list.
+ * renderConfig, which StaticCanvas compares itself:
+ * - the visible elements: ids, order, version, versionNonce;
+ * - the frame that contains each of them (renderable map);
+ * - the bound text drawn with each container (renderable map), even when the
+ *   text itself is not in the visible list;
+ * - the label of each visible arrow (full scene map): the arrow punches its
+ *   label hole from `allElementsMap`, also while the label is being edited
+ *   and therefore left out of the renderable map;
+ * - forced `scene.triggerUpdate()` calls.
  */
 export type StaticContentSnapshot = {
   forcedUpdateCount: number;
@@ -52,7 +59,15 @@ export type StaticContentSnapshot = {
   versionNonces: number[];
   frameVersionNonces: (number | null)[];
   boundTextVersionNonces: (number | null)[];
+  arrowLabelVersionNonces: (number | null)[];
 };
+
+/**
+ * sdamex: module-level so that a static canvas nonce is never reissued, even
+ * when App replaces the Renderer (componentWillUnmount) or `destroy()` resets
+ * it while StaticCanvas keeps its last props (StrictMode remount).
+ */
+let staticCanvasNonceCounter = 0;
 
 const getFrameVersionNonce = (
   element: NonDeletedExcalidrawElement,
@@ -67,9 +82,18 @@ const getBoundTextVersionNonce = (
   elementsMap: NonDeletedElementsMap,
 ) => getBoundTextElement(element, elementsMap)?.versionNonce ?? null;
 
+const getArrowLabelVersionNonce = (
+  element: NonDeletedExcalidrawElement,
+  allElementsMap: NonDeletedElementsMap | NonDeletedSceneElementsMap,
+) =>
+  isArrowElement(element)
+    ? getBoundTextElement(element, allElementsMap)?.versionNonce ?? null
+    : null;
+
 export const snapshotStaticContent = (
   visibleElements: readonly NonDeletedExcalidrawElement[],
   elementsMap: NonDeletedElementsMap,
+  allElementsMap: NonDeletedElementsMap | NonDeletedSceneElementsMap,
   forcedUpdateCount: number,
 ): StaticContentSnapshot => ({
   forcedUpdateCount,
@@ -82,12 +106,16 @@ export const snapshotStaticContent = (
   boundTextVersionNonces: visibleElements.map((element) =>
     getBoundTextVersionNonce(element, elementsMap),
   ),
+  arrowLabelVersionNonces: visibleElements.map((element) =>
+    getArrowLabelVersionNonce(element, allElementsMap),
+  ),
 });
 
 export const isSameStaticContent = (
   snapshot: StaticContentSnapshot,
   visibleElements: readonly NonDeletedExcalidrawElement[],
   elementsMap: NonDeletedElementsMap,
+  allElementsMap: NonDeletedElementsMap | NonDeletedSceneElementsMap,
   forcedUpdateCount: number,
 ): boolean => {
   if (
@@ -105,7 +133,9 @@ export const isSameStaticContent = (
       getFrameVersionNonce(element, elementsMap) !==
         snapshot.frameVersionNonces[index] ||
       getBoundTextVersionNonce(element, elementsMap) !==
-        snapshot.boundTextVersionNonces[index]
+        snapshot.boundTextVersionNonces[index] ||
+      getArrowLabelVersionNonce(element, allElementsMap) !==
+        snapshot.arrowLabelVersionNonces[index]
     ) {
       return false;
     }
@@ -291,8 +321,10 @@ export class Renderer {
 
   /**
    * sdamex: nonce for the static canvas. It changes only when the static
-   * output can change for element reasons: the visible elements (ids, order,
-   * versions), the frames that contain them, or an explicit
+   * output can change for element reasons (see `StaticContentSnapshot`):
+   * the visible elements (ids, order, version, versionNonce), their
+   * containing frames, the bound text drawn with each container (renderable
+   * map), arrow labels (full scene map), or an explicit
    * `scene.triggerUpdate()`. A remote batch that touched only off-screen
    * elements keeps it, so the static canvas is not repainted. Viewport and
    * other appState changes are compared by StaticCanvas itself.
@@ -303,6 +335,7 @@ export class Renderer {
   ): string {
     const sceneNonce = this.scene.getSceneNonce();
     const forcedUpdateCount = this.scene.getForcedUpdateCount();
+    const allElementsMap = this.scene.getNonDeletedElementsMap();
     const prev = this.staticContent;
 
     // the memoized result was reused and nothing notified since
@@ -321,6 +354,7 @@ export class Renderer {
         prev.snapshot,
         visibleElements,
         elementsMap,
+        allElementsMap,
         forcedUpdateCount,
       )
     ) {
@@ -328,13 +362,14 @@ export class Renderer {
       return `${prev.nonce}`;
     }
 
-    const nonce = (prev?.nonce ?? 0) + 1;
+    const nonce = ++staticCanvasNonceCounter;
     this.staticContent = {
       visibleElements,
       sceneNonce,
       snapshot: snapshotStaticContent(
         visibleElements,
         elementsMap,
+        allElementsMap,
         forcedUpdateCount,
       ),
       nonce,

@@ -2,16 +2,22 @@ import React from "react";
 import { vi } from "vitest";
 
 import { arrayToMap, reseed } from "@excalidraw/common";
-import { newElementWith } from "@excalidraw/element";
+import { newElementWith, Scene } from "@excalidraw/element";
+import { pointFrom } from "@excalidraw/math";
 
 import type {
   NonDeletedElementsMap,
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
+import type { LocalPoint } from "@excalidraw/math";
 
 import { Excalidraw } from "../index";
 import * as StaticScene from "../renderer/staticScene";
-import { isSameStaticContent, snapshotStaticContent } from "../scene/Renderer";
+import {
+  isSameStaticContent,
+  Renderer,
+  snapshotStaticContent,
+} from "../scene/Renderer";
 
 import { API } from "./helpers/api";
 import {
@@ -21,6 +27,8 @@ import {
   restoreOriginalGetBoundingClientRect,
   unmountComponent,
 } from "./test-utils";
+
+import type { NormalizedZoomValue } from "../types";
 
 const { h } = window;
 
@@ -71,6 +79,7 @@ describe("static canvas repaint (sdamex)", () => {
 
   it("keeps the static canvas when a batch changes only off-screen elements", () => {
     const { onScreen, offScreen } = setupScene();
+    const visibleElementsBefore = h.app.visibleElements;
 
     API.setElements([
       onScreen,
@@ -80,6 +89,8 @@ describe("static canvas repaint (sdamex)", () => {
     expect(h.elements.find((element) => element.id === "off-screen")?.x).toBe(
       20010,
     );
+    // the App did re-render: it recomputed the visible elements
+    expect(h.app.visibleElements).not.toBe(visibleElementsBefore);
     expect(renderStaticScene).not.toHaveBeenCalled();
   });
 
@@ -110,6 +121,41 @@ describe("static canvas repaint (sdamex)", () => {
 
     expect(renderStaticScene).toHaveBeenCalled();
   });
+
+  it("repaints the arrow label hole while the label is edited", () => {
+    const arrow = API.createElement({
+      type: "arrow",
+      id: "arrow",
+      x: 10,
+      y: 50,
+      width: 150,
+      height: 0,
+      points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(150, 0)],
+      boundElements: [{ type: "text", id: "arrow-label" }],
+    });
+    const label = API.createElement({
+      type: "text",
+      id: "arrow-label",
+      text: "a",
+      containerId: arrow.id,
+      x: 80,
+      y: 40,
+      width: 10,
+      height: 20,
+    });
+    API.setElements([arrow, label]);
+    // the label being edited leaves the renderable map, the arrow still
+    // punches its hole from the full scene map
+    API.setAppState({ editingTextElement: label });
+    expect(h.app.visibleElements.map((element) => element.id)).toEqual([
+      "arrow",
+    ]);
+    renderStaticScene.mockClear();
+
+    API.setElements([arrow, newElementWith(label, { text: "abc", width: 30 })]);
+
+    expect(renderStaticScene).toHaveBeenCalled();
+  });
 });
 
 describe("static content snapshot (sdamex)", () => {
@@ -117,30 +163,31 @@ describe("static content snapshot (sdamex)", () => {
     const a = API.createElement({ type: "rectangle", id: "a" });
     const b = API.createElement({ type: "rectangle", id: "b", x: 200 });
     const map = toMap([a, b]);
-    const snapshot = snapshotStaticContent([a, b], map, 0);
+    const snapshot = snapshotStaticContent([a, b], map, map, 0);
 
-    expect(isSameStaticContent(snapshot, [a, b], map, 0)).toBe(true);
+    expect(isSameStaticContent(snapshot, [a, b], map, map, 0)).toBe(true);
   });
 
   it("detects a z-order swap", () => {
     const a = API.createElement({ type: "rectangle", id: "a" });
     const b = API.createElement({ type: "rectangle", id: "b", x: 200 });
     const map = toMap([a, b]);
-    const snapshot = snapshotStaticContent([a, b], map, 0);
+    const snapshot = snapshotStaticContent([a, b], map, map, 0);
 
-    expect(isSameStaticContent(snapshot, [b, a], map, 0)).toBe(false);
+    expect(isSameStaticContent(snapshot, [b, a], map, map, 0)).toBe(false);
   });
 
   it("detects a version change and a forced update", () => {
     const a = API.createElement({ type: "rectangle", id: "a" });
     const map = toMap([a]);
-    const snapshot = snapshotStaticContent([a], map, 0);
+    const snapshot = snapshotStaticContent([a], map, map, 0);
     const changed = newElementWith(a, { x: 5 });
+    const changedMap = toMap([changed]);
 
-    expect(isSameStaticContent(snapshot, [changed], toMap([changed]), 0)).toBe(
-      false,
-    );
-    expect(isSameStaticContent(snapshot, [a], map, 1)).toBe(false);
+    expect(
+      isSameStaticContent(snapshot, [changed], changedMap, changedMap, 0),
+    ).toBe(false);
+    expect(isSameStaticContent(snapshot, [a], map, map, 1)).toBe(false);
   });
 
   it("detects a change of the frame that contains a visible element", () => {
@@ -154,12 +201,14 @@ describe("static content snapshot (sdamex)", () => {
       id: "child",
       frameId: frame.id,
     });
-    const snapshot = snapshotStaticContent([child], toMap([frame, child]), 0);
+    const map = toMap([frame, child]);
+    const snapshot = snapshotStaticContent([child], map, map, 0);
     const movedFrame = newElementWith(frame, { x: -4000 });
+    const movedMap = toMap([movedFrame, child]);
 
-    expect(
-      isSameStaticContent(snapshot, [child], toMap([movedFrame, child]), 0),
-    ).toBe(false);
+    expect(isSameStaticContent(snapshot, [child], movedMap, movedMap, 0)).toBe(
+      false,
+    );
   });
 
   it("detects a change of the bound text drawn with a visible container", () => {
@@ -174,20 +223,77 @@ describe("static content snapshot (sdamex)", () => {
       text: "old",
       containerId: container.id,
     });
+    const map = toMap([container, label]);
     // the label is not in the visible list: the container draws it
-    const snapshot = snapshotStaticContent(
-      [container],
-      toMap([container, label]),
-      0,
-    );
+    const snapshot = snapshotStaticContent([container], map, map, 0);
     const edited = newElementWith(label, { text: "new" });
+    const editedMap = toMap([container, edited]);
 
     expect(
-      isSameStaticContent(snapshot, [container], toMap([container, edited]), 0),
+      isSameStaticContent(snapshot, [container], editedMap, editedMap, 0),
     ).toBe(false);
     // the label being edited is excluded from the renderable map
     expect(
-      isSameStaticContent(snapshot, [container], toMap([container]), 0),
+      isSameStaticContent(snapshot, [container], toMap([container]), map, 0),
     ).toBe(false);
+  });
+
+  it("detects a change of an arrow label that is only in the full scene map", () => {
+    const arrow = API.createElement({
+      type: "arrow",
+      id: "arrow",
+      boundElements: [{ type: "text", id: "arrow-label" }],
+    });
+    const label = API.createElement({
+      type: "text",
+      id: "arrow-label",
+      text: "a",
+      containerId: arrow.id,
+    });
+    // the label being edited is excluded from the renderable map, but the
+    // arrow punches its label hole from the full scene map
+    const renderMap = toMap([arrow]);
+    // one Map instance: the compare must not depend on map identity
+    const allElementsMap = toMap([arrow, label]);
+    const snapshot = snapshotStaticContent(
+      [arrow],
+      renderMap,
+      allElementsMap,
+      0,
+    );
+    allElementsMap.set(label.id, newElementWith(label, { text: "ab" }));
+
+    expect(
+      isSameStaticContent(snapshot, [arrow], renderMap, allElementsMap, 0),
+    ).toBe(false);
+  });
+
+  it("never reissues a static canvas nonce across renderers", () => {
+    const opts = {
+      zoom: { value: 1 as NormalizedZoomValue },
+      offsetLeft: 0,
+      offsetTop: 0,
+      scrollX: 0,
+      scrollY: 0,
+      width: 200,
+      height: 100,
+      editingTextElement: null,
+      newElement: null,
+      selectedElements: [],
+      selectedElementsAreBeingDragged: false,
+      frameToHighlight: null,
+    };
+    // e.g. App.componentWillUnmount replaces the renderer while StaticCanvas
+    // keeps its last props (StrictMode remount)
+    const first = new Renderer(
+      new Scene([API.createElement({ type: "rectangle", id: "a" })]),
+    );
+    const second = new Renderer(
+      new Scene([API.createElement({ type: "rectangle", id: "b" })]),
+    );
+
+    expect(first.getRenderableElements(opts).staticCanvasNonce).not.toBe(
+      second.getRenderableElements(opts).staticCanvasNonce,
+    );
   });
 });

@@ -110,13 +110,14 @@ const areEqual = (
   nextProps: StaticCanvasProps,
 ) => {
   if (
+    // sdamex: `canvasNonce` is the renderer's static canvas nonce. It changes
+    // whenever the visible elements (ids, order, versions), the frames that
+    // contain them, or a forced `scene.triggerUpdate()` change, so fresh
+    // `elementsMap` / `visibleElements` instances with the same content
+    // (e.g. a remote batch that touched only off-screen elements) no longer
+    // repaint the static canvas.
     prevProps.canvasNonce !== nextProps.canvasNonce ||
-    prevProps.scale !== nextProps.scale ||
-    // we need to memoize on elementsMap because they may have renewed
-    // even if canvasNonce didn't change (e.g. we filter elements out based
-    // on appState)
-    prevProps.elementsMap !== nextProps.elementsMap ||
-    prevProps.visibleElements !== nextProps.visibleElements
+    prevProps.scale !== nextProps.scale
   ) {
     return false;
   }

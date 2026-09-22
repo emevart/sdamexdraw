@@ -140,6 +140,20 @@ export class Scene {
    */
   private sceneNonce: number | undefined;
 
+  /**
+   * sdamex: incremented only by explicit `triggerUpdate()` calls. Callers use
+   * that method to force a repaint when no element version changed (images
+   * and fonts loaded, embed validation, hover state, stats edits). Element
+   * updates through `replaceAllElements()` / `mutateElement()` don't
+   * increment it, which lets the renderer keep the static canvas when a
+   * batch touched only off-screen elements.
+   */
+  private forcedUpdateCount = 0;
+
+  getForcedUpdateCount() {
+    return this.forcedUpdateCount;
+  }
+
   getSceneNonce() {
     return this.sceneNonce;
   }
@@ -297,10 +311,16 @@ export class Scene {
     this.frames = nextFrameLikes;
     this.nonDeletedFramesLikes = getNonDeletedElements(this.frames).elements;
 
-    this.triggerUpdate();
+    this.notifyUpdate();
   }
 
+  /** Notifies subscribers and forces the static canvas to repaint. */
   triggerUpdate() {
+    this.forcedUpdateCount++;
+    this.notifyUpdate();
+  }
+
+  private notifyUpdate() {
     this.sceneNonce = randomInteger();
 
     for (const callback of Array.from(this.callbacks)) {
@@ -438,7 +458,7 @@ export class Scene {
       prevVersion !== nextVersion &&
       options.informMutation
     ) {
-      this.triggerUpdate();
+      this.notifyUpdate();
     }
 
     return element;

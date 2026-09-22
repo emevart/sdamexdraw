@@ -2358,6 +2358,7 @@ class App extends React.Component<AppProps, AppState> {
       elementsMap: renderableElementsMap,
       visibleElements,
       canvasNonce,
+      staticCanvasNonce,
       /**
        * element to draw on the <NewElementCanvas> for optimization purposes.
        * Can be null even if this.state.newElement defined
@@ -2602,7 +2603,7 @@ class App extends React.Component<AppProps, AppState> {
                             elementsMap={renderableElementsMap}
                             allElementsMap={allElementsMap}
                             visibleElements={visibleElements}
-                            canvasNonce={canvasNonce}
+                            canvasNonce={staticCanvasNonce}
                             selectionNonce={
                               this.state.selectionElement?.versionNonce
                             }

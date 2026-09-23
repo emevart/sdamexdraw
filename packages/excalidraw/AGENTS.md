@@ -73,7 +73,7 @@
 ### Custom UI elements
 
 - **Minimap** -- toggleable, рендерит actual element shapes, click/drag navigation (`Minimap.tsx`)
-- **Selection/Lasso ToolPopover** -- dedup с `renderedSelectionPopover` ref (`Actions.tsx`)
+- **Selection/Lasso ToolPopover** -- dedup с `renderedSelectionPopover` ref (`Actions.tsx`); вариант, совпавший с триггером, получает test id `<trigger>-option` (#3081)
 - **Tool tooltip without null** -- подсказка и aria-keyshortcuts инструмента собираются из существующих клавиш (#3079, `shapes.tsx` → `getToolShortcutKeys`)
 
 ### Safety patches

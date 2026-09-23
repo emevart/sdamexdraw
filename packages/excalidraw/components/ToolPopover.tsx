@@ -117,6 +117,13 @@ export const ToolPopover = ({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isPopupOpen, handlePopupOpenChange]);
 
+  // sdamex: an option of the same tool as the trigger (selection, freedraw)
+  // gets its own test id, so ids stay unique while the picker is open (#3081)
+  const getOptionTestId = (type: string) =>
+    `toolbar-${type}` === dataTestId
+      ? `${dataTestId}-option`
+      : `toolbar-${type}`;
+
   return (
     <Popover.Root open={isPopupOpen}>
       {anchorRef?.current && (
@@ -166,7 +173,7 @@ export const ToolPopover = ({
               title={title || capitalizeString(type)}
               keyBindingLabel=""
               aria-label={title || capitalizeString(type)}
-              data-testid={`toolbar-${type}`}
+              data-testid={getOptionTestId(type)}
               onChange={() => {
                 if (onSelect) {
                   onSelect(type);

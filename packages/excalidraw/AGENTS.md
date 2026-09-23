@@ -48,6 +48,7 @@
 - **Stroke width slider** -- discrete с squiggle preview (`StrokeWidthRange.tsx`)
 - **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`)
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
+- **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
 - **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`)
 
 ### Shapes / Presets

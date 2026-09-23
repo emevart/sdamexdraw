@@ -1321,12 +1321,29 @@ export const getFreedrawOutlinePoints = (
   // on iPad (Apple Pencil reports very low pressure on first contact).
   const SOFT_START_POINTS = 5;
 
+  // sdamex: the last distinct point goes in unsmoothed so the ink ends at the
+  // pointerup position. With streamline 0.45 and sparse samples (fast strokes)
+  // the smoothed tail stopped up to ~30% short of the real end while bounds
+  // and handles use the raw points (#3043). Only positions change: the point
+  // count must stay the same (see packages/excalidraw/AGENTS.md gotchas).
+  let tailIndex = element.points.length - 1;
+  while (
+    tailIndex > 0 &&
+    element.points[tailIndex][0] === element.points[tailIndex - 1][0] &&
+    element.points[tailIndex][1] === element.points[tailIndex - 1][1]
+  ) {
+    tailIndex--;
+  }
+
   for (let i = 0; i < element.points.length; i++) {
     const [x, y] = element.points[i];
     let pressure = element.simulatePressure ? 0.5 : element.pressures[i] ?? 0.5;
     if (!element.simulatePressure && i < SOFT_START_POINTS) {
       const blend = i / SOFT_START_POINTS; // 0→1 over first 5 points
       pressure = 0.5 * (1 - blend) + pressure * blend;
+    }
+    if (i === tailIndex) {
+      lp.options.streamline = 0;
     }
     lp.addPoint([x, y, pressure] as [number, number, number]);
   }

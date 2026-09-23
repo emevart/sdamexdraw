@@ -124,6 +124,14 @@ export const canResizeFromSides = (editorInterface: EditorInterface) => {
 export const getOmitSidesForEditorInterface = (
   editorInterface: EditorInterface,
 ) => {
+  // sdamex: devices with a mouse or trackpad draw the n/s/e/w handles, the
+  // invisible side band alone was hard to find (#3042). Touch devices keep
+  // upstream behaviour: tablets resize from the side band, phones get the
+  // side handles because they cannot use the band.
+  if (!editorInterface.userAgent.isMobileDevice) {
+    return {};
+  }
+
   if (canResizeFromSides(editorInterface)) {
     return DEFAULT_OMIT_SIDES;
   }

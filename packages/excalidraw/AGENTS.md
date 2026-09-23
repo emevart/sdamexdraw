@@ -36,6 +36,7 @@
 - **Canvas background TopPicks visible в compact** (`ColorPicker.tsx`)
 - **Confirm dialog never fullscreen в compact/phone** (`ConfirmDialog.scss`)
 - **Zoom controls alignment** -- `--editor-container-padding` (`css/styles.scss`)
+- **Side resize handles on non-mobile devices** -- n/s/e/w ручки рисуются при `userAgent.isMobileDevice === false`; iPad -- апстримная полоса у стороны, телефон -- ручки (#3042, `packages/element/src/transformHandles.ts` → `getOmitSidesForEditorInterface`)
 
 ### Mobile
 

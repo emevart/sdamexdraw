@@ -628,11 +628,21 @@ export const textWysiwyg = ({
   }
 
   editable.onkeydown = (event) => {
-    if (!event.shiftKey && actionZoomIn.keyTest(event)) {
+    // sdamex: only Ctrl/Cmd zooms while typing, bare "=", "-", "+" are text
+    // since the zoom actions also accept them without modifiers (#2667)
+    if (
+      event[KEYS.CTRL_OR_CMD] &&
+      !event.shiftKey &&
+      actionZoomIn.keyTest(event)
+    ) {
       event.preventDefault();
       app.actionManager.executeAction(actionZoomIn);
       updateWysiwygStyle();
-    } else if (!event.shiftKey && actionZoomOut.keyTest(event)) {
+    } else if (
+      event[KEYS.CTRL_OR_CMD] &&
+      !event.shiftKey &&
+      actionZoomOut.keyTest(event)
+    ) {
       event.preventDefault();
       app.actionManager.executeAction(actionZoomOut);
       updateWysiwygStyle();

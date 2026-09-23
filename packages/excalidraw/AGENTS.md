@@ -63,6 +63,7 @@
 - **Russian ЙЦУКЕН** -- `getLatinKey()` + Proxy in `App.tsx` (см. `packages/common/AGENTS.md`)
 - **Two-finger double-tap undo** -- `touch.identifier` tracking (`App.tsx`)
 - **Arrow-key move history** -- сдвиг стрелками захватывается в историю на keyup: одно нажатие или зажатая клавиша = одна запись undo (#5050, `App.tsx` → `pendingArrowKeyMoveCapture`)
+- **Bare +/- zoom** -- «=»/«-» и NumpadAdd/NumpadSubtract без модификаторов зумят холст; в полях ввода не срабатывают, в редакторе текста зум только с Ctrl/Cmd (#2667, `actionCanvas.tsx`, `textWysiwyg.tsx`)
 
 ### API surface
 

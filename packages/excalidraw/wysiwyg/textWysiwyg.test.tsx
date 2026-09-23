@@ -704,6 +704,14 @@ describe("textWysiwyg", () => {
       expect(h.state.zoom.value).toBe(1);
     });
 
+    it("bare = - and + typed in the editor do not zoom (sdamex #2667)", () => {
+      expect(h.state.zoom.value).toBe(1);
+      fireEvent.keyDown(textarea, { code: CODES.EQUAL, key: "=" });
+      fireEvent.keyDown(textarea, { code: CODES.MINUS, key: "-" });
+      fireEvent.keyDown(textarea, { code: CODES.NUM_ADD, key: "+" });
+      expect(h.state.zoom.value).toBe(1);
+    });
+
     it("text should never go beyond max width", async () => {
       UI.clickTool("text");
       mouse.click(0, 0);

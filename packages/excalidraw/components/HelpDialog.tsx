@@ -1,6 +1,11 @@
 import React from "react";
 
-import { isDarwin, isFirefox, isWindows } from "@excalidraw/common";
+import {
+  DEFAULT_SIDEBAR_AVAILABLE,
+  isDarwin,
+  isFirefox,
+  isWindows,
+} from "@excalidraw/common";
 
 import { KEYS } from "@excalidraw/common";
 
@@ -314,10 +319,12 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
               label={t("stats.fullTitle")}
               shortcuts={[getShortcutKey("Alt+/")]}
             />
-            <Shortcut
-              label={t("search.title")}
-              shortcuts={[getShortcutFromShortcutName("searchMenu")]}
-            />
+            {DEFAULT_SIDEBAR_AVAILABLE && (
+              <Shortcut
+                label={t("search.title")}
+                shortcuts={[getShortcutFromShortcutName("searchMenu")]}
+              />
+            )}
             <Shortcut
               label={t("commandPalette.title")}
               shortcuts={

@@ -441,6 +441,10 @@ export const DEFAULT_SIDEBAR = {
   defaultTab: LIBRARY_SIDEBAR_TAB,
 } as const;
 
+// sdamex: the fork's DefaultSidebar renders nothing, so canvas search and the
+// library have no UI. Flip together with enabling the library (#2708).
+export const DEFAULT_SIDEBAR_AVAILABLE = false;
+
 export const LIBRARY_DISABLED_TYPES = new Set([
   "iframe",
   "embeddable",

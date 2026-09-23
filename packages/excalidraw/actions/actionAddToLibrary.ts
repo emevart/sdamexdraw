@@ -1,4 +1,8 @@
-import { LIBRARY_DISABLED_TYPES, randomId } from "@excalidraw/common";
+import {
+  DEFAULT_SIDEBAR_AVAILABLE,
+  LIBRARY_DISABLED_TYPES,
+  randomId,
+} from "@excalidraw/common";
 import { deepCopyElement } from "@excalidraw/element";
 
 import { CaptureUpdateAction } from "@excalidraw/element";
@@ -10,6 +14,8 @@ import { register } from "./register";
 export const actionAddToLibrary = register({
   name: "addToLibrary",
   trackEvent: { category: "element" },
+  // sdamex: the library is not visible or persisted yet, hide the item (#5069)
+  predicate: () => DEFAULT_SIDEBAR_AVAILABLE,
   perform: (elements, appState, _, app) => {
     const selectedElements = app.scene.getSelectedElements({
       selectedElementIds: appState.selectedElementIds,

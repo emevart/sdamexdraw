@@ -74,6 +74,7 @@
 
 - **Minimap** -- toggleable, рендерит actual element shapes, click/drag navigation (`Minimap.tsx`)
 - **Selection/Lasso ToolPopover** -- dedup с `renderedSelectionPopover` ref (`Actions.tsx`)
+- **Tool tooltip without null** -- подсказка и aria-keyshortcuts инструмента собираются из существующих клавиш (#3079, `shapes.tsx` → `getToolShortcutKeys`)
 
 ### Safety patches
 

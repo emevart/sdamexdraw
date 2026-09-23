@@ -113,4 +113,35 @@ describe("freedraw stroke end (sdamex #3043)", () => {
       );
     }
   });
+
+  // a pen reports pointerup with pressure 0: the tail keeps its raw position
+  // but gets the pressure the library would have smoothed. The end cap of a
+  // longer stroke takes the penultimate pressure, so the tail pressure shows
+  // on a two-point stroke
+  it("the tail of a pen stroke keeps the smoothed pressure", () => {
+    const element: ExcalidrawFreeDrawElement = {
+      ...freedraw([
+        [0, 0],
+        [100, 0],
+      ] as LocalPoint[]),
+      simulatePressure: false,
+      pressures: [0.5, 0],
+    };
+    // ink radius for a pressure: easeOutSine with thinning 0.6, as in
+    // getFreedrawOutlinePoints
+    const radius = (pressure: number) =>
+      getFreedrawStrokeRadius(element) *
+      (1 - 0.6 * (1 - Math.sin((pressure * Math.PI) / 2)));
+    const tipRadius = Math.max(
+      ...getFreedrawOutlinePoints(element)
+        .filter(([x]) => x > 100)
+        .map(([x, y]) => Math.hypot(x - 100, y)),
+    );
+
+    // soft start blends the raw 0 to 0.5 * 0.8 = 0.4, streamline 0.45
+    // smooths it to 0.5 + (0.4 - 0.5) * 0.55 = 0.445
+    expect(tipRadius).toBeCloseTo(radius(0.445), 6);
+    expect(tipRadius).not.toBeCloseTo(radius(0.4), 2);
+    expect(Math.max(...xs(element))).toBeGreaterThanOrEqual(100 - 0.01);
+  });
 });

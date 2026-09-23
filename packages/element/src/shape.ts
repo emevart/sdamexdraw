@@ -1297,10 +1297,12 @@ export const getFreedrawOutlinePoints = (
 
   // perfect-freehand used size as diameter; LaserPointer uses it as radius
   const size = getFreedrawStrokeRadius(element);
+  // sdamex: shared with the tail pressure mirror below
+  const STREAMLINE = 0.45;
 
   const lp = new LaserPointer({
     size,
-    streamline: 0.45,
+    streamline: STREAMLINE,
     simplify: 0,
     sizeMapping: (details) => {
       const { pressure } = details;
@@ -1324,8 +1326,10 @@ export const getFreedrawOutlinePoints = (
   // sdamex: the last distinct point goes in unsmoothed so the ink ends at the
   // pointerup position. With streamline 0.45 and sparse samples (fast strokes)
   // the smoothed tail stopped up to ~30% short of the real end while bounds
-  // and handles use the raw points (#3043). Only positions change: the point
-  // count must stay the same (see packages/excalidraw/AGENTS.md gotchas).
+  // and handles use the raw points (#3043). Only the tail position is raw: its
+  // pressure is smoothed like every other point (a pen reports pointerup with
+  // pressure 0), and the point count must stay the same (see
+  // packages/excalidraw/AGENTS.md gotchas).
   let tailIndex = element.points.length - 1;
   while (
     tailIndex > 0 &&
@@ -1335,6 +1339,9 @@ export const getFreedrawOutlinePoints = (
     tailIndex--;
   }
 
+  // mirror of the pressure LaserPointer smooths with STREAMLINE; the library
+  // skips a point that repeats the previous one, and so does the mirror
+  let smoothedPressure = 0.5;
   for (let i = 0; i < element.points.length; i++) {
     const [x, y] = element.points[i];
     let pressure = element.simulatePressure ? 0.5 : element.pressures[i] ?? 0.5;
@@ -1342,8 +1349,17 @@ export const getFreedrawOutlinePoints = (
       const blend = i / SOFT_START_POINTS; // 0→1 over first 5 points
       pressure = 0.5 * (1 - blend) + pressure * blend;
     }
+    if (i === 0) {
+      smoothedPressure = pressure;
+    } else if (
+      x !== element.points[i - 1][0] ||
+      y !== element.points[i - 1][1]
+    ) {
+      smoothedPressure += (pressure - smoothedPressure) * (1 - STREAMLINE);
+    }
     if (i === tailIndex) {
       lp.options.streamline = 0;
+      pressure = smoothedPressure;
     }
     lp.addPoint([x, y, pressure] as [number, number, number]);
   }

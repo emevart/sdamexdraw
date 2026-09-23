@@ -31,7 +31,7 @@
 ### UI / Layout
 
 - **Compact styles panel forced** -- non-phone devices (`packages/common/src/editorInterface.ts` → `deriveStylesPanelMode`)
-- **Preferences в hamburger menu** -- grid toggle, grid snap, others (`LayerUI.tsx`)
+- **Preferences в hamburger menu** -- grid toggle, grid snap, others (`LayerUI.tsx`); переключатели, значение которых задаёт prop хоста (`gridModeEnabled`, `viewModeEnabled`), скрыты, их горячие клавиши молчат, кнопки выхода из режима просмотра на телефоне при prop нет, Alt+S не выключает сетку из prop, «Привязка к сетке» видна по эффективной сетке (#5069)
 - **Custom tooltips** -- replaced native `title=` с `<Tooltip>` (400ms, 11px, Apple Pencil hover support)
 - **Canvas background TopPicks visible в compact** (`ColorPicker.tsx`)
 - **Confirm dialog never fullscreen в compact/phone** (`ConfirmDialog.scss`)

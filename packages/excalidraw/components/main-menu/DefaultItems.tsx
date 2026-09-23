@@ -551,6 +551,11 @@ export const PreferencesToggleGridModeItem = () => {
   const actionManager = useExcalidrawActionManager();
   const appState = useUIAppState();
 
+  // sdamex: the host prop sets the grid (#5069)
+  if (!actionManager.isActionEnabled(actionToggleGridMode)) {
+    return null;
+  }
+
   return (
     <DropdownMenuItemCheckbox
       checked={appState.gridModeEnabled}
@@ -569,9 +574,11 @@ export const PreferencesToggleGridSnapItem = () => {
   const { t } = useI18n();
   const actionManager = useExcalidrawActionManager();
   const appState = useUIAppState();
+  const appProps = useAppProps();
 
   // Only show when grid is enabled
-  if (!appState.gridModeEnabled) {
+  // sdamex: the host prop wins over state (#5069)
+  if (!(appProps.gridModeEnabled ?? appState.gridModeEnabled)) {
     return null;
   }
 
@@ -627,6 +634,12 @@ const PreferencesToggleViewModeItem = () => {
   const { t } = useI18n();
   const actionManager = useExcalidrawActionManager();
   const appState = useUIAppState();
+
+  // sdamex: the host prop sets view mode (#5069)
+  if (!actionManager.isActionEnabled(actionToggleViewMode)) {
+    return null;
+  }
+
   return (
     <DropdownMenuItemCheckbox
       checked={appState.viewModeEnabled}

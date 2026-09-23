@@ -23,8 +23,9 @@ export const actionToggleGridSnap = register({
     };
   },
   checked: (appState: UIAppState) => appState.gridSnapEnabled,
-  predicate: (element, appState) => {
-    // Only show when grid is visible — snapping without grid makes no sense
-    return appState.gridModeEnabled;
+  predicate: (element, appState, props) => {
+    // Only show when grid is visible — snapping without grid makes no sense.
+    // sdamex: the host prop wins over state, like isGridModeEnabled() (#5069)
+    return props.gridModeEnabled ?? appState.gridModeEnabled;
   },
 });

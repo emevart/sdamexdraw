@@ -63,7 +63,7 @@
 
 - **Russian ЙЦУКЕН** -- `getLatinKey()` + Proxy in `App.tsx` (см. `packages/common/AGENTS.md`)
 - **Two-finger double-tap undo** -- `touch.identifier` tracking (`App.tsx`)
-- **Arrow-key move history** -- сдвиг стрелками захватывается в историю на keyup: одно нажатие или зажатая клавиша = одна запись undo (#5050, `App.tsx` → `pendingArrowKeyMoveCapture`)
+- **Arrow-key move history** -- сдвиг стрелками захватывается в историю на keyup: одно нажатие или зажатая клавиша = одна запись undo; если keyup потерян (Alt+Tab при зажатой стрелке), захват делается на blur окна (#5050, `App.tsx` → `pendingArrowKeyMoveCapture`, `flushArrowKeyMoveCapture`)
 - **Bare +/- zoom** -- «=»/«-» и NumpadAdd/NumpadSubtract без модификаторов зумят холст; в полях ввода не срабатывают, в редакторе текста зум только с Ctrl/Cmd (#2667, `actionCanvas.tsx`, `textWysiwyg.tsx`)
 - **No sidebar, no Ctrl+F / Add to library** -- при `DEFAULT_SIDEBAR_AVAILABLE = false` (`packages/common/src/constants.ts`) Ctrl+F остаётся поиском браузера, «Добавить в библиотеку» и строка поиска в справке скрыты; включить вместе с #2708 (#5069)
 

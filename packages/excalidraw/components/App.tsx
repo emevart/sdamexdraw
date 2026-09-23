@@ -916,9 +916,10 @@ class App extends React.Component<AppProps, AppState> {
   // opening the menu.
   private rightClickPanned = false;
   // sdamex: arrow-key moves mutate elements without a history capture; it is
-  // scheduled on keyup, so a held key (auto-repeat) becomes one undo entry
-  // and every separate press its own. Without it the move stuck to the next
-  // entry and Ctrl+Z undid the shape creation together with it (#5050).
+  // scheduled on keyup (or window blur, if the keyup is lost), so a held key
+  // (auto-repeat) becomes one undo entry and every separate press its own.
+  // Without it the move stuck to the next entry and Ctrl+Z undid the shape
+  // creation together with it (#5050).
   private pendingArrowKeyMoveCapture = false;
   lastPointerDownEvent: React.PointerEvent<HTMLElement> | null = null;
   lastPointerUpEvent: React.PointerEvent<HTMLElement> | PointerEvent | null =
@@ -3129,6 +3130,8 @@ class App extends React.Component<AppProps, AppState> {
 
   private onBlur = withBatchedUpdates(() => {
     isHoldingSpace = false;
+    // sdamex: Alt+Tab with a held arrow key loses its keyup (#5050)
+    this.flushArrowKeyMoveCapture();
     this.setState({
       isBindingEnabled: this.state.bindingPreference === "enabled",
     });
@@ -5947,6 +5950,19 @@ class App extends React.Component<AppProps, AppState> {
     },
   );
 
+  // sdamex: closes a pending arrow-key move as its own undo entry (#5050).
+  // Called on keyup and on window blur: a keyup lost to Alt+Tab would leave
+  // the move to stick to the next entry.
+  private flushArrowKeyMoveCapture = () => {
+    if (!this.pendingArrowKeyMoveCapture) {
+      return;
+    }
+    this.pendingArrowKeyMoveCapture = false;
+    this.store.scheduleCapture();
+    // the store commits in componentDidUpdate, so a render has to follow
+    this.setState({ suggestedBinding: null });
+  };
+
   private onKeyUp = withBatchedUpdates((event: KeyboardEvent) => {
     if (event.key === KEYS.SPACE) {
       if (
@@ -6068,10 +6084,7 @@ class App extends React.Component<AppProps, AppState> {
           }
         });
 
-      if (this.pendingArrowKeyMoveCapture) {
-        this.pendingArrowKeyMoveCapture = false;
-        this.store.scheduleCapture();
-      }
+      this.flushArrowKeyMoveCapture();
 
       this.setState({ suggestedBinding: null });
     }

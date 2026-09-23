@@ -7,7 +7,7 @@ import { Excalidraw } from "../index";
 
 import { API } from "./helpers/api";
 import { Keyboard } from "./helpers/ui";
-import { render, unmountComponent } from "./test-utils";
+import { fireEvent, render, unmountComponent } from "./test-utils";
 
 const { h } = window;
 
@@ -65,6 +65,22 @@ describe("arrow-key moves in history (sdamex #5050)", () => {
     Keyboard.undo();
     expect(rect().y).toBe(100);
     expect(rect().isDeleted).toBe(false);
+  });
+
+  it("a keyup lost to a window blur still closes the move entry", () => {
+    // Alt+Tab while the arrow is held: the window blurs, keyup never comes
+    Keyboard.keyDown(KEYS.ARROW_RIGHT);
+    fireEvent.blur(window);
+
+    // a separate action after the focus is back
+    Keyboard.keyPress(KEYS.DELETE);
+    expect(rect().isDeleted).toBe(true);
+
+    Keyboard.undo();
+    expect(rect().isDeleted).toBe(false);
+    expect(rect().x).toBe(100 + ELEMENT_TRANSLATE_AMOUNT);
+    Keyboard.undo();
+    expect(rect().x).toBe(100);
   });
 
   it("arrow keys without a selection record nothing", () => {

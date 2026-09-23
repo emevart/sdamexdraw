@@ -11,6 +11,23 @@ The change should be grouped under one of the below section and must contain PR 
 Please add the latest change on the top under the correct section.
 -->
 
+## 0.30.3 (2026-09-24)
+
+### Features
+
+- Средние ручки изменения размера (n/s/e/w) рисуются на устройствах с мышью или трекпадом; на iPad остаётся полоса у стороны, на телефоне ручки как раньше [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Клавиши «+» и «−» (основной ряд и цифровой блок) зумят холст без модификаторов; в полях ввода и в тексте на доске они остаются символами [#14](https://github.com/emevart/sdamexdraw/pull/14).
+
+### Fixes
+
+- Конец быстрого штриха доходит до точки отпускания: последняя отличающаяся точка не сглаживается, число точек прежнее [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Сдвиг выделения стрелками записывается в историю на отпускание клавиши; Ctrl+Z после сдвига больше не удаляет фигуру [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Подсказка инструмента без цифровой клавиши больше не показывает «или null»; вариант пикера инструментов с тем же инструментом, что триггер, получает test id `<trigger>-option` [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Подпись заглушки встраивания переводится (`element.emptyEmbeddablePlaceholder`, `element.iframePlaceholder`); `createPlaceholderEmbeddableLabel` принимает необязательные подписи [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Переключатели «Показать сетку» и «Режим просмотра» и их горячие клавиши скрыты, в том числе в справке, если значение задаёт prop хоста, как и кнопка выхода из режима просмотра на телефоне; Alt+S не выключает сетку из prop; «Привязка к сетке» видна по эффективной сетке [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Пока `DEFAULT_SIDEBAR_AVAILABLE = false`, Ctrl+F остаётся поиском браузера, «Добавить в библиотеку» и строка поиска в справке скрыты; на телефоне убран пустой раздел «Generate» [#14](https://github.com/emevart/sdamexdraw/pull/14).
+- Шрифт «Код» в быстром выборе — Cascadia с кириллицей; Comic Shanns помечен устаревшим и продолжает рисовать старые надписи [#14](https://github.com/emevart/sdamexdraw/pull/14).
+
 ## 0.30.2 (2026-09-23)
 
 ### Fixes

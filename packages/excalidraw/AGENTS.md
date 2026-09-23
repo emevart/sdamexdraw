@@ -62,6 +62,7 @@
 
 - **Russian ЙЦУКЕН** -- `getLatinKey()` + Proxy in `App.tsx` (см. `packages/common/AGENTS.md`)
 - **Two-finger double-tap undo** -- `touch.identifier` tracking (`App.tsx`)
+- **Arrow-key move history** -- сдвиг стрелками захватывается в историю на keyup: одно нажатие или зажатая клавиша = одна запись undo (#5050, `App.tsx` → `pendingArrowKeyMoveCapture`)
 
 ### API surface
 

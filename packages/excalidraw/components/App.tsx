@@ -915,6 +915,11 @@ class App extends React.Component<AppProps, AppState> {
   // contextmenu event that follows the release must be swallowed instead of
   // opening the menu.
   private rightClickPanned = false;
+  // sdamex: arrow-key moves mutate elements without a history capture; it is
+  // scheduled on keyup, so a held key (auto-repeat) becomes one undo entry
+  // and every separate press its own. Without it the move stuck to the next
+  // entry and Ctrl+Z undid the shape creation together with it (#5050).
+  private pendingArrowKeyMoveCapture = false;
   lastPointerDownEvent: React.PointerEvent<HTMLElement> | null = null;
   lastPointerUpEvent: React.PointerEvent<HTMLElement> | PointerEvent | null =
     null;
@@ -5799,6 +5804,10 @@ class App extends React.Component<AppProps, AppState> {
 
         this.scene.triggerUpdate();
 
+        if (selectedElements.length > 0) {
+          this.pendingArrowKeyMoveCapture = true;
+        }
+
         event.preventDefault();
       } else if (event.key === KEYS.ENTER) {
         const selectedElements = this.scene.getSelectedElements(this.state);
@@ -6058,6 +6067,11 @@ class App extends React.Component<AppProps, AppState> {
             });
           }
         });
+
+      if (this.pendingArrowKeyMoveCapture) {
+        this.pendingArrowKeyMoveCapture = false;
+        this.store.scheduleCapture();
+      }
 
       this.setState({ suggestedBinding: null });
     }

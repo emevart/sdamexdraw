@@ -3,7 +3,6 @@ import {
   COLOR_WHITE,
   FRAME_STYLE,
   THEME,
-  throttleRAF,
 } from "@excalidraw/common";
 import { isElementLink } from "@excalidraw/element";
 import { createPlaceholderEmbeddableLabel } from "@excalidraw/element";
@@ -19,7 +18,11 @@ import {
   shouldApplyFrameClip,
 } from "@excalidraw/element";
 
-import { renderElement } from "@excalidraw/element";
+import {
+  beginZoomRasterBudget,
+  endZoomRasterBudget,
+  renderElement,
+} from "@excalidraw/element";
 
 import { getElementAbsoluteCoords } from "@excalidraw/element";
 
@@ -255,7 +258,7 @@ const renderLinkIcon = (
     context.restore();
   }
 };
-const _renderStaticScene = ({
+const paintStaticScene = ({
   canvas,
   rc,
   elementsMap,
@@ -507,10 +510,132 @@ const _renderStaticScene = ({
   });
 };
 
-/** throttled to animation framerate */
-export const renderStaticSceneThrottled = throttleRAF(
-  (config: StaticSceneRenderConfig) => {
+/**
+ * sdamex: per-pass budget for re-rasterizing element canvases after zoom
+ * (see `beginZoomRasterBudget`). A pass on a canvas without deferred zoom
+ * work budgets the whole pass (bootstrap, grid, drawing every visible
+ * element). Once a pass deferred work, every later pass of that canvas (its
+ * continuation or a fresh paint) budgets regeneration work only and always
+ * regenerates at least one canvas, so it keeps making progress even when the
+ * rest of the pass alone exceeds this many milliseconds, and even when a
+ * fresh paint every frame (a peer drawing, a local drag) keeps cancelling
+ * the continuation.
+ */
+export const ZOOM_RASTER_BUDGET_MS = 8;
+
+const zoomRasterContinuations = new Map<HTMLCanvasElement, number>();
+
+/**
+ * sdamex: canvases whose last pass deferred zoom regenerations; cleared by a
+ * pass that completes with nothing deferred.
+ */
+const canvasesWithDeferredZoomWork = new WeakSet<HTMLCanvasElement>();
+
+/** sdamex: drops a scheduled continuation paint for this canvas. */
+export const cancelZoomRasterContinuation = (
+  canvas: HTMLCanvasElement | null,
+) => {
+  if (!canvas) {
+    return;
+  }
+  const id = zoomRasterContinuations.get(canvas);
+  if (id !== undefined) {
+    cancelAnimationFrame(id);
+    zoomRasterContinuations.delete(canvas);
+  }
+};
+
+const _renderStaticScene = (config: StaticSceneRenderConfig) => {
+  const { canvas, renderConfig } = config;
+
+  if (canvas === null || renderConfig.isExporting) {
+    paintStaticScene(config);
+    return;
+  }
+
+  // sdamex: a fresh paint supersedes a scheduled continuation
+  cancelZoomRasterContinuation(canvas);
+
+  // sdamex: any pass on a canvas with deferred zoom work (continuation or
+  // fresh paint) uses a lazy deadline so it always regenerates at least one
+  // stale canvas (see the doc comment on `zoomRasterBudget`)
+  beginZoomRasterBudget(ZOOM_RASTER_BUDGET_MS, {
+    lazy: canvasesWithDeferredZoomWork.has(canvas),
+  });
+  let deferred = false;
+  try {
+    paintStaticScene(config);
+  } finally {
+    deferred = endZoomRasterBudget();
+  }
+
+  if (deferred) {
+    canvasesWithDeferredZoomWork.add(canvas);
+    zoomRasterContinuations.set(
+      canvas,
+      requestAnimationFrame(() => {
+        zoomRasterContinuations.delete(canvas);
+        _renderStaticScene(config);
+      }),
+    );
+  } else {
+    canvasesWithDeferredZoomWork.delete(canvas);
+  }
+};
+
+/**
+ * sdamex: pending throttled static paints, one per canvas (latest config
+ * wins). Upstream used a single module-level `throttleRAF` whose latest args
+ * won across canvases, so with two editors on a page one editor's pending
+ * paint was dropped, and `Renderer.destroy()` cancelled every editor's. With
+ * the static canvas nonce that dropped paint no longer heals on the next
+ * scene notify.
+ */
+const pendingStaticScenes = new Map<
+  HTMLCanvasElement,
+  StaticSceneRenderConfig
+>();
+let pendingStaticScenesFrame: number | null = null;
+
+const flushPendingStaticScenes = () => {
+  if (pendingStaticScenesFrame !== null) {
+    cancelAnimationFrame(pendingStaticScenesFrame);
+    pendingStaticScenesFrame = null;
+  }
+  const configs = [...pendingStaticScenes.values()];
+  pendingStaticScenes.clear();
+  for (const config of configs) {
     _renderStaticScene(config);
+  }
+};
+
+/**
+ * throttled to animation framerate
+ *
+ * sdamex: per canvas, flushed by one `requestAnimationFrame` for all
+ * canvases; `cancel(canvas)` drops only that canvas's pending paint.
+ */
+export const renderStaticSceneThrottled = Object.assign(
+  (config: StaticSceneRenderConfig) => {
+    pendingStaticScenes.set(config.canvas, config);
+    if (pendingStaticScenesFrame === null) {
+      pendingStaticScenesFrame = requestAnimationFrame(() => {
+        pendingStaticScenesFrame = null;
+        flushPendingStaticScenes();
+      });
+    }
+  },
+  {
+    /** paints every pending canvas now */
+    flush: flushPendingStaticScenes,
+    /** drops the pending paint of this canvas, other canvases keep theirs */
+    cancel: (canvas: HTMLCanvasElement) => {
+      pendingStaticScenes.delete(canvas);
+      if (!pendingStaticScenes.size && pendingStaticScenesFrame !== null) {
+        cancelAnimationFrame(pendingStaticScenesFrame);
+        pendingStaticScenesFrame = null;
+      }
+    },
   },
 );
 
@@ -521,6 +646,9 @@ export const renderStaticScene = (
   renderConfig: StaticSceneRenderConfig,
   throttle?: boolean,
 ) => {
+  // sdamex: a newer scene supersedes a scheduled continuation
+  cancelZoomRasterContinuation(renderConfig.canvas);
+
   if (throttle) {
     renderStaticSceneThrottled(renderConfig);
     return;

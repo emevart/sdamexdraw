@@ -88,6 +88,20 @@ export class HistoryChangedEvent {
 }
 
 export class History {
+  /**
+   * sdamex: max entries kept per stack; the oldest are dropped first. Long
+   * collaborative sessions otherwise keep every delta (including erased
+   * elements and selection changes) for the lifetime of the tab.
+   */
+  public static maxEntries = 300;
+
+  private static trim(stack: HistoryDelta[]) {
+    const excess = stack.length - History.maxEntries;
+    if (excess > 0) {
+      stack.splice(0, excess);
+    }
+  }
+
   public readonly onHistoryChangedEmitter = new Emitter<
     [HistoryChangedEvent]
   >();
@@ -123,6 +137,7 @@ export class History {
     const historyDelta = HistoryDelta.inverse(delta);
 
     this.undoStack.push(historyDelta);
+    History.trim(this.undoStack);
 
     if (!historyDelta.elements.isEmpty()) {
       // don't reset redo stack on local appState changes,
@@ -244,6 +259,7 @@ export class History {
 
   private static push(stack: HistoryDelta[], entry: HistoryDelta) {
     const inversedEntry = HistoryDelta.inverse(entry);
-    return stack.push(inversedEntry);
+    stack.push(inversedEntry);
+    History.trim(stack);
   }
 }

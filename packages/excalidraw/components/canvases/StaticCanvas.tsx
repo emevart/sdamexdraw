@@ -8,7 +8,11 @@ import type {
 } from "@excalidraw/element/types";
 
 import { isRenderThrottlingEnabled } from "../../reactUtils";
-import { renderStaticScene } from "../../renderer/staticScene";
+import {
+  cancelZoomRasterContinuation,
+  renderStaticScene,
+  renderStaticSceneThrottled,
+} from "../../renderer/staticScene";
 
 import type {
   RenderableElementsMap,
@@ -40,6 +44,15 @@ const StaticCanvas = (props: StaticCanvasProps) => {
     props.canvas.width = props.appState.width * props.scale;
     props.canvas.height = props.appState.height * props.scale;
   }, [props.appState.height, props.appState.width, props.canvas, props.scale]);
+
+  useEffect(() => {
+    const canvas = props.canvas;
+    return () => {
+      cancelZoomRasterContinuation(canvas);
+      // sdamex: drop only this canvas's pending throttled paint
+      renderStaticSceneThrottled.cancel(canvas);
+    };
+  }, [props.canvas]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -110,13 +123,18 @@ const areEqual = (
   nextProps: StaticCanvasProps,
 ) => {
   if (
+    // sdamex: `canvasNonce` is the renderer's static canvas nonce
+    // (`StaticContentSnapshot` in scene/Renderer.ts). The static canvas
+    // repaints when any element the static paint reads (each visible
+    // element, its containing frame, a container's bound text, an arrow's
+    // label) changes object identity, `version` or `versionNonce`, when the
+    // visible id list or order changes, or on `scene.triggerUpdate()`. A host
+    // mutation that keeps the same object and the same version/versionNonce
+    // is not repainted by itself. Fresh `elementsMap` / `visibleElements`
+    // instances with the same content (e.g. a remote batch that touched only
+    // off-screen elements) therefore no longer repaint the static canvas.
     prevProps.canvasNonce !== nextProps.canvasNonce ||
-    prevProps.scale !== nextProps.scale ||
-    // we need to memoize on elementsMap because they may have renewed
-    // even if canvasNonce didn't change (e.g. we filter elements out based
-    // on appState)
-    prevProps.elementsMap !== nextProps.elementsMap ||
-    prevProps.visibleElements !== nextProps.visibleElements
+    prevProps.scale !== nextProps.scale
   ) {
     return false;
   }

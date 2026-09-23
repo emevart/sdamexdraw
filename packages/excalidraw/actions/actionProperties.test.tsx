@@ -159,7 +159,7 @@ describe("element locking", () => {
       });
       const text = API.createElement({
         type: "text",
-        fontFamily: FONT_FAMILY["Comic Shanns"],
+        fontFamily: FONT_FAMILY.Cascadia,
       });
       API.setElements([rect, text]);
       API.setSelectedElements([rect, text]);

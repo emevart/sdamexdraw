@@ -64,6 +64,7 @@ export const FONT_METADATA: Record<number, FontMetadata> = {
       descender: -250,
       lineHeight: 1.25,
     },
+    deprecated: true, // sdamex: no Cyrillic, replaced by Cascadia as "Code" (#5069)
   },
   [FONT_FAMILY.Virgil]: {
     metrics: {
@@ -91,7 +92,7 @@ export const FONT_METADATA: Record<number, FontMetadata> = {
       descender: -480,
       lineHeight: 1.2,
     },
-    deprecated: true,
+    // sdamex: back in the picker as the "Code" font (#5069)
   },
   [FONT_FAMILY["Liberation Sans"]]: {
     metrics: {

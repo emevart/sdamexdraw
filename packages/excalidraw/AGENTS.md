@@ -88,6 +88,7 @@
 
 - **i18n Russian complete** -- все ключи + 13 quality fixes (`locales/ru-RU.json`)
 - **Embed placeholder label translated** -- «Empty Web-Embed»/«IFrame element» через `element.emptyEmbeddablePlaceholder`/`element.iframePlaceholder` (#4886, `embeddable.ts`, `staticScene.ts`, `staticSvgScene.ts`)
+- **"Code" font = Cascadia** -- Comic Shanns без кириллицы помечен deprecated и остаётся для старых надписей; в быстрых шрифтах «Код» = Cascadia (#5069, `FontPicker.tsx`, `packages/common/src/font-metadata.ts`)
 
 ## Gotchas
 

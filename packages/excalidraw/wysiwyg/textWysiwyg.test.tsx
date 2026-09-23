@@ -1114,7 +1114,7 @@ describe("textWysiwyg", () => {
 
       expect(
         (h.elements[1] as ExcalidrawTextElementWithContainer).fontFamily,
-      ).toEqual(FONT_FAMILY["Comic Shanns"]);
+      ).toEqual(FONT_FAMILY.Cascadia);
 
       //undo
       Keyboard.withModifierKeys({ ctrl: true }, () => {
@@ -1130,7 +1130,7 @@ describe("textWysiwyg", () => {
       });
       expect(
         (h.elements[1] as ExcalidrawTextElementWithContainer).fontFamily,
-      ).toEqual(FONT_FAMILY["Comic Shanns"]);
+      ).toEqual(FONT_FAMILY.Cascadia);
     });
 
     it("should wrap text and vertcially center align once text submitted", async () => {
@@ -1540,7 +1540,7 @@ describe("textWysiwyg", () => {
 
       expect(
         (h.elements[1] as ExcalidrawTextElementWithContainer).fontFamily,
-      ).toEqual(FONT_FAMILY["Comic Shanns"]);
+      ).toEqual(FONT_FAMILY.Cascadia);
       expect(getOriginalContainerHeightFromCache(rectangle.id)).toBe(75);
 
       fireEvent.click(screen.getByTitle(/Very large/i));
@@ -1567,10 +1567,10 @@ describe("textWysiwyg", () => {
       fireEvent.click(screen.getByTitle(/code/i));
       expect(
         (h.elements[1] as ExcalidrawTextElementWithContainer).fontFamily,
-      ).toEqual(FONT_FAMILY["Comic Shanns"]);
+      ).toEqual(FONT_FAMILY.Cascadia);
       expect(
         (h.elements[1] as ExcalidrawTextElementWithContainer).lineHeight,
-      ).toEqual(1.25);
+      ).toEqual(1.2);
 
       fireEvent.click(screen.getByTitle(/normal/i));
       expect(

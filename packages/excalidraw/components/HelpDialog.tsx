@@ -9,7 +9,8 @@ import {
 
 import { KEYS } from "@excalidraw/common";
 
-import { actionToggleTheme } from "../actions";
+import { actionToggleGridMode, actionToggleTheme } from "../actions";
+import { actionToggleViewMode } from "../actions/actionToggleViewMode";
 import { getShortcutFromShortcutName } from "../actions/shortcuts";
 import { probablySupportsClipboardBlob } from "../clipboard";
 import { t } from "../i18n";
@@ -301,14 +302,19 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
               label={t("buttons.objectsSnapMode")}
               shortcuts={[getShortcutKey("Alt+S")]}
             />
-            <Shortcut
-              label={t("labels.toggleGrid")}
-              shortcuts={[getShortcutKey("CtrlOrCmd+'")]}
-            />
-            <Shortcut
-              label={t("labels.viewMode")}
-              shortcuts={[getShortcutKey("Alt+R")]}
-            />
+            {/* sdamex: no rows for keys the host prop switched off (#5069) */}
+            {actionManager.isActionEnabled(actionToggleGridMode) && (
+              <Shortcut
+                label={t("labels.toggleGrid")}
+                shortcuts={[getShortcutKey("CtrlOrCmd+'")]}
+              />
+            )}
+            {actionManager.isActionEnabled(actionToggleViewMode) && (
+              <Shortcut
+                label={t("labels.viewMode")}
+                shortcuts={[getShortcutKey("Alt+R")]}
+              />
+            )}
             {actionManager.isActionEnabled(actionToggleTheme) && (
               <Shortcut
                 label={t("labels.toggleTheme")}

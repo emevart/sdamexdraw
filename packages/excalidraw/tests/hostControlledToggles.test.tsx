@@ -15,6 +15,7 @@ import {
   screen,
   toggleMenu,
   unmountComponent,
+  within,
 } from "./test-utils";
 
 const { h } = window;
@@ -130,5 +131,35 @@ describe("host-controlled toggles (sdamex #5069)", () => {
     expect(exit).not.toBeNull();
     fireEvent.click(exit!);
     expect(h.state.viewModeEnabled).toBe(false);
+  });
+
+  // the shortcuts help must not list keys whose action the host switched off
+  const openHelp = () => {
+    API.setAppState({ openDialog: { name: "help" } });
+    const dialog = document.querySelector<HTMLElement>(".HelpDialog");
+    expect(dialog).not.toBeNull();
+    return within(dialog!);
+  };
+
+  it.each([false, true])(
+    "the shortcuts help omits grid and view mode the host sets (viewModeEnabled=%s)",
+    async (viewModeEnabled) => {
+      await render(
+        <Excalidraw gridModeEnabled viewModeEnabled={viewModeEnabled} />,
+      );
+      const help = openHelp();
+
+      expect(help.queryByText(t("buttons.zenMode"))).not.toBeNull();
+      expect(help.queryByText(t("labels.toggleGrid"))).toBeNull();
+      expect(help.queryByText(t("labels.viewMode"))).toBeNull();
+    },
+  );
+
+  it("the shortcuts help keeps grid and view mode without the props", async () => {
+    await render(<Excalidraw />);
+    const help = openHelp();
+
+    expect(help.queryByText(t("labels.toggleGrid"))).not.toBeNull();
+    expect(help.queryByText(t("labels.viewMode"))).not.toBeNull();
   });
 });

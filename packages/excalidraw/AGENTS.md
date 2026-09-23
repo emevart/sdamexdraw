@@ -85,6 +85,7 @@
 ### i18n
 
 - **i18n Russian complete** -- все ключи + 13 quality fixes (`locales/ru-RU.json`)
+- **Embed placeholder label translated** -- «Empty Web-Embed»/«IFrame element» через `element.emptyEmbeddablePlaceholder`/`element.iframePlaceholder` (#4886, `embeddable.ts`, `staticScene.ts`, `staticSvgScene.ts`)
 
 ## Gotchas
 

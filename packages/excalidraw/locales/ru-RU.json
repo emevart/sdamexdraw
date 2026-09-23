@@ -389,7 +389,9 @@
     "magicframe": "Магическая рамка",
     "embeddable": "Встроенная страница",
     "selection": "Выделение",
-    "iframe": "IFrame"
+    "iframe": "IFrame",
+    "emptyEmbeddablePlaceholder": "Пустая встроенная страница",
+    "iframePlaceholder": "Элемент IFrame"
   },
   "headings": {
     "canvasActions": "Операции холста",

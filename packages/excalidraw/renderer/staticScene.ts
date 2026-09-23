@@ -37,6 +37,7 @@ import {
   ELEMENT_LINK_IMG,
   getLinkHandleFromCoords,
 } from "../components/hyperlink/helpers";
+import { t } from "../i18n";
 
 import { bootstrapCanvas, getNormalizedCanvasDimensions } from "./helpers";
 
@@ -441,7 +442,10 @@ const paintStaticScene = ({
             element.width &&
             element.height
           ) {
-            const label = createPlaceholderEmbeddableLabel(element);
+            const label = createPlaceholderEmbeddableLabel(element, {
+              emptyEmbeddable: t("element.emptyEmbeddablePlaceholder"),
+              iframe: t("element.iframePlaceholder"),
+            });
             renderElement(
               label,
               elementsMap,

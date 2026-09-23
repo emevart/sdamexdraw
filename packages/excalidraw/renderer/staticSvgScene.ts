@@ -42,6 +42,8 @@ import type {
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
 
+import { t } from "../i18n";
+
 import type { RenderableElementsMap, SVGRenderConfig } from "../scene/types";
 import type { AppState, BinaryFiles } from "../types";
 import type { Drawable } from "roughjs/bin/core";
@@ -200,7 +202,10 @@ const renderElementToSvg = (
       );
       addToRoot(node, element);
 
-      const label = createPlaceholderEmbeddableLabel(element);
+      const label = createPlaceholderEmbeddableLabel(element, {
+        emptyEmbeddable: t("element.emptyEmbeddablePlaceholder"),
+        iframe: t("element.iframePlaceholder"),
+      });
       renderElementToSvg(
         label,
         elementsMap,

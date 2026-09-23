@@ -43,6 +43,7 @@
 - **All 14 shape presets в SHAPE_TOOLS** (`MobileToolBar.tsx`)
 - **Extra tools dropdown opens upward** (`side="top"`, `DropdownMenuContent.tsx`)
 - **Bounding box / transform handles для polygon presets на mobile** (`hasBoundingBox()` + hit-test in `App.tsx`)
+- **No "Generate" header in phone extras** -- пустой слот TTD без заголовка, пункт Mermaid остаётся (#5069, `MobileToolbar.tsx`)
 
 ### Freedraw / Drawing
 

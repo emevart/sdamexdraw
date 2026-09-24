@@ -20,7 +20,10 @@ import type { LocalPoint } from "@excalidraw/math";
 
 import type { NormalizedZoomValue } from "@excalidraw/excalidraw/types";
 
-import type { ExcalidrawLinearElement } from "../src/types";
+import type {
+  ExcalidrawLinearElement,
+  ExcalidrawLineElement,
+} from "../src/types";
 
 const { h } = window;
 
@@ -102,7 +105,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     expect(closeIndicatorDrawnAt(200, 200)).toBe(true);
     mouse.upAt(210, 208);
 
-    const updated = h.elements[0] as ExcalidrawLinearElement;
+    const updated = h.elements[0] as ExcalidrawLineElement;
     expect(updated.id).toBe(line.id);
     expect(updated.points.length).toBe(4);
     expect(globalPoint(updated, -1)).toEqual(globalPoint(updated, 0));
@@ -120,7 +123,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     expect(closeIndicatorDrawnAt(200, 300)).toBe(true);
     mouse.upAt(208, 290);
 
-    const updated = h.elements[0] as ExcalidrawLinearElement;
+    const updated = h.elements[0] as ExcalidrawLineElement;
     expect(updated.points.length).toBe(4);
     expect(globalPoint(updated, 0)).toEqual(globalPoint(updated, -1));
     expect(globalPoint(updated, -1)).toEqual([200, 300]);
@@ -138,7 +141,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     expect(closeIndicatorDrawnAt(200, 200)).toBe(false);
     mouse.upAt(225, 212);
 
-    const updated = h.elements[0] as ExcalidrawLinearElement;
+    const updated = h.elements[0] as ExcalidrawLineElement;
     expect(globalPoint(updated, -1)).toEqual([225, 212]);
     expect(updated.polygon).toBe(false);
   });
@@ -259,7 +262,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     expect(closeIndicatorDrawnAt(200, 200)).toBe(false);
     mouse.upAt(210, 208);
 
-    const updated = h.elements[0] as ExcalidrawLinearElement;
+    const updated = h.elements[0] as ExcalidrawLineElement;
     expect(updated.points.length).toBe(3);
     expect(globalPoint(updated, -1)).toEqual([210, 208]);
     expect(globalPoint(updated, 0)).toEqual([200, 200]);
@@ -300,7 +303,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     mouse.downAt(last.x, last.y);
     mouse.moveTo(first.x + 15, first.y + 20);
     mouse.upAt(first.x + 15, first.y + 20);
-    let updated = h.elements[0] as ExcalidrawLinearElement;
+    let updated = h.elements[0] as ExcalidrawLineElement;
     expect(globalPoint(updated, -1)).toEqual([207.5, 210]);
     expect(updated.polygon).toBe(false);
 
@@ -308,7 +311,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     mouse.downAt(first.x + 15, first.y + 20);
     mouse.moveTo(first.x + 10, first.y + 8);
     mouse.upAt(first.x + 10, first.y + 8);
-    updated = h.elements[0] as ExcalidrawLinearElement;
+    updated = h.elements[0] as ExcalidrawLineElement;
     expect(globalPoint(updated, -1)).toEqual(globalPoint(updated, 0));
     expect(globalPoint(updated, 0)).toEqual([200, 200]);
     expect(updated.polygon).toBe(true);

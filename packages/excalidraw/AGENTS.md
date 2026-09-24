@@ -51,7 +51,7 @@
 - **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`); режим маркера — переменная модуля вне `appState`, а `LayerUI` обёрнут в `React.memo`, поэтому режим идёт пропом `isHighlighterMode` (`App` → `LayerUI` → `ShapesSwitcher` и `MobileMenu` → `MobileToolbar` → `MobileSettingsRow`) и `setHighlighterMode` перерисовывает UI; засеянный хостом маркер, в том числе `setToolSettings` после монтирования без смены инструмента, не сбрасывается триггером пикера на десктопе и телефоне
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
 - **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; сырой остаётся только позиция, давление хвоста сглаживается, как у остальных точек (у пера pointerup приходит с pressure 0); число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
-- **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`)
+- **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`); отпускание во время анимации (250 мс) фиксирует целевую форму без точки отпускания, как после конца анимации; после анимации движение с удержанием вращает и масштабирует штрих, отпускание его фиксирует (#5176, `App.tsx` → `finishStraightenAnimation`, `tests/straightenRelease.test.tsx`)
 
 ### Shapes / Presets
 

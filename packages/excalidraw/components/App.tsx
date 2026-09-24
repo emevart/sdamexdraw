@@ -720,6 +720,9 @@ const mergeToolStrokeSettings = (
 let straightenTimerId: number | null = null;
 let straightenAnimationId: number | null = null;
 let isStraightening = false;
+// Puts the stroke of the running straighten animation into its target shape;
+// set while the animation runs, so a release mid-animation can finish on it.
+let finishStraightenAnimation: (() => boolean) | null = null;
 // eslint-disable-next-line prefer-const -- reassigned in animateStraighten/pointerUp
 let wasStraightened = false;
 
@@ -10490,10 +10493,30 @@ class App extends React.Component<AppProps, AppState> {
     const { animationTargets, finalPoints } = result;
     const startTime = performance.now();
 
+    const applyFinalPoints = () => {
+      const finalPressures = finalPoints.map(() =>
+        element.simulatePressure ? 0.5 : 1,
+      );
+      this.scene.mutateElement(element, {
+        points: finalPoints,
+        pressures: finalPressures,
+      });
+      this.setState({ newElement: element });
+    };
+
+    finishStraightenAnimation = () => {
+      if (this.state.newElement !== element) {
+        return false;
+      }
+      applyFinalPoints();
+      return true;
+    };
+
     const animate = (now: number) => {
       if (this.state.newElement !== element) {
         isStraightening = false;
         straightenAnimationId = null;
+        finishStraightenAnimation = null;
         return;
       }
 
@@ -10515,16 +10538,10 @@ class App extends React.Component<AppProps, AppState> {
       if (t < 1) {
         straightenAnimationId = requestAnimationFrame(animate);
       } else {
-        const finalPressures = finalPoints.map(() =>
-          element.simulatePressure ? 0.5 : 1,
-        );
-        this.scene.mutateElement(element, {
-          points: finalPoints,
-          pressures: finalPressures,
-        });
-        this.setState({ newElement: element });
+        applyFinalPoints();
         straightenAnimationId = null;
         isStraightening = false;
+        finishStraightenAnimation = null;
 
         // Enter transform mode (Procreate-style drag/rotate/scale)
         const pts = finalPoints;
@@ -12422,6 +12439,7 @@ class App extends React.Component<AppProps, AppState> {
               cancelAnimationFrame(straightenAnimationId);
               straightenAnimationId = null;
               isStraightening = false;
+              finishStraightenAnimation = null;
             }
 
             straightenTimerId = window.setTimeout(() => {
@@ -12911,6 +12929,15 @@ class App extends React.Component<AppProps, AppState> {
           cancelAnimationFrame(straightenAnimationId);
           straightenAnimationId = null;
           isStraightening = false;
+          // Released mid-animation: commit the target shape the animation
+          // was heading to, without the release point. Stopping on the
+          // intermediate points left a half-straightened stroke with a hook.
+          const finish = finishStraightenAnimation;
+          finishStraightenAnimation = null;
+          if (finish?.()) {
+            this.actionManager.executeAction(actionFinalize);
+            return;
+          }
         }
 
         // Transform mode: finalize on pointer up

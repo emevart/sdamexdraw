@@ -112,6 +112,11 @@ export const actionClearCanvas = register({
         theme: appState.theme,
         penMode: appState.penMode,
         penDetected: appState.penDetected,
+        // sdamex: цвет, толщина и прозрачность зеркалят набор настроек
+        // инструмента: сброс к умолчаниям записал бы их в набор и хосту
+        currentItemStrokeColor: appState.currentItemStrokeColor,
+        currentItemStrokeWidth: appState.currentItemStrokeWidth,
+        currentItemOpacity: appState.currentItemOpacity,
         exportBackground: appState.exportBackground,
         exportEmbedScene: appState.exportEmbedScene,
         gridSize: appState.gridSize,

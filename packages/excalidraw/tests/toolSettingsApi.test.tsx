@@ -1,7 +1,10 @@
 import React from "react";
 
 import { actionChangeStrokeColor, actionDeselect } from "../actions";
-import { actionToggleEraserTool } from "../actions/actionCanvas";
+import {
+  actionClearCanvas,
+  actionToggleEraserTool,
+} from "../actions/actionCanvas";
 import { Excalidraw } from "../index";
 
 import { API } from "./helpers/api";
@@ -14,7 +17,7 @@ import {
   waitFor,
 } from "./test-utils";
 
-import type { ToolSettingsSnapshot } from "../types";
+import type { ExcalidrawImperativeAPI, ToolSettingsSnapshot } from "../types";
 
 // window test handle, same pattern as regressionTests.test.tsx
 const { h } = window;
@@ -504,15 +507,17 @@ describe("api tool settings (sdamex)", () => {
       h.app.setActiveTool({ type: "freedraw" });
     });
     expect(currentItem()).toEqual(SEED.highlighter);
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
 
     act(() => {
       h.app.actionManager.executeAction(actionDeselect, "keyboard");
     });
     expect(h.state.activeTool.type).toBe("selection");
+    // сам переход хосту ничего не шлёт
+    expect(onChange).not.toHaveBeenCalled();
     expect(currentItem()).toEqual(SEED.shape);
 
-    const onChange = vi.fn();
-    h.app.api.onToolSettingsChange(onChange);
     recolorSelected("#e8590c");
 
     // при выборе действует набор фигур: цвет выделенной фигуры становится
@@ -584,5 +589,107 @@ describe("api tool settings (sdamex)", () => {
       pencil: { ...SEED.pencil, strokeColor: "#e8590c" },
     });
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  // Нажим в коммите с расхождением ключей уходит хосту сразу: коммит загрузки
+  // набора может не изменить currentItem* (здесь наборы маркера и фигур
+  // совпадают), и тогда уведомление о нажиме потерялось бы
+  it("(10) a pressure change in the key-mismatch commit notifies once with untouched sets", async () => {
+    const seed = { ...SEED, shape: SEED.highlighter, highlighterMode: true };
+    await renderSeeded(seed);
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    act(() => {
+      h.app.actionManager.executeAction(actionDeselect, "keyboard");
+      h.setState({ pressureSensitivityEnabled: false });
+    });
+
+    expect(h.state.activeTool.type).toBe("selection");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...seed,
+      pressureSensitivity: false,
+    });
+  });
+
+  // Нативная очистка холста сбрасывает appState к умолчаниям: цвет, толщина
+  // и прозрачность инструмента не должны уйти в набор и к хосту
+  it("(12) clearing the canvas keeps the tool set and does not notify the host", async () => {
+    await renderSeeded({ ...SEED, highlighterMode: true });
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    API.setElements([API.createElement({ type: "rectangle" })]);
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    act(() => {
+      h.app.actionManager.executeAction(actionClearCanvas);
+    });
+
+    expect(h.elements.every((element) => element.isDeleted)).toBe(true);
+    expect(h.state.activeTool.type).toBe("freedraw");
+    expect(currentItem()).toEqual(SEED.highlighter);
+    expect(h.app.api.getToolSettings()).toEqual({
+      ...SEED,
+      highlighterMode: true,
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+// Ключ активного набора — у каждого редактора свой: коммит одного редактора
+// не должен переставлять ключ другого
+describe("api tool settings, two editors on a page (sdamex)", () => {
+  beforeEach(() => {
+    unmountComponent();
+  });
+
+  it("(11) a color change in editor A with a rectangle survives editor B picking the pencil", async () => {
+    const apis: ExcalidrawImperativeAPI[] = [];
+    const seedInto =
+      (index: number) => (api: ExcalidrawImperativeAPI | null) => {
+        if (api) {
+          api.setToolSettings(SEED);
+          apis[index] = api;
+        }
+      };
+    await render(
+      <>
+        <Excalidraw onExcalidrawAPI={seedInto(0)} />
+        <Excalidraw onExcalidrawAPI={seedInto(1)} />
+      </>,
+    );
+    await waitFor(() => {
+      expect(apis).toHaveLength(2);
+      expect(apis[0].getAppState().isLoading).toBe(false);
+      expect(apis[1].getAppState().isLoading).toBe(false);
+    });
+    const [a, b] = apis;
+
+    act(() => {
+      a.setActiveTool({ type: "rectangle" });
+    });
+    act(() => {
+      b.setActiveTool({ type: "freedraw" });
+    });
+    expect(b.getAppState().currentItemStrokeColor).toBe(
+      SEED.pencil.strokeColor,
+    );
+
+    act(() => {
+      a.updateScene({ appState: { currentItemStrokeColor: "#e8590c" } });
+    });
+
+    expect(a.getAppState().currentItemStrokeColor).toBe("#e8590c");
+    expect(a.getToolSettings().shape).toEqual({
+      ...SEED.shape,
+      strokeColor: "#e8590c",
+    });
+    expect(a.getToolSettings().pencil).toEqual(SEED.pencil);
   });
 });

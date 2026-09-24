@@ -679,7 +679,6 @@ const toolSettings: Record<"pencil" | "highlighter" | "shape", ToolSettings> = {
   shape: { strokeWidth: 1, opacity: 100, strokeColor: "#000000" },
 };
 
-let activeSettingsKey: "pencil" | "highlighter" | "shape" = "shape";
 let isHighlighterMode = false;
 
 // Набор настроек инструмента; null — инструмент не создаёт элементов и набор
@@ -1039,6 +1038,10 @@ class App extends React.Component<AppProps, AppState> {
   penModePreference: boolean | null = null;
   // хост засеял наборы: initializeScene берёт currentItem* из набора
   private toolSettingsSeeded = false;
+  // набор, который зеркалят currentItem* этого редактора. Поле экземпляра:
+  // при двух редакторах на странице коммит одного не переставляет ключ другого
+  // (сами наборы и режим маркера общие — это настройки пользователя)
+  private activeSettingsKey: "pencil" | "highlighter" | "shape" = "shape";
   // последний снимок, о котором знает хост (JSON), — чтобы не звать его зря
   private lastEmittedToolSettings: string | null = null;
 
@@ -1152,12 +1155,12 @@ class App extends React.Component<AppProps, AppState> {
     // Функциональная форма: если вызов пришёл между restore в initializeScene
     // и коммитом состояния, инструмент берётся уже восстановленный. До
     // инициализации запись безвредна: initializeScene переставит набор.
-    // Модульный activeSettingsKey здесь не меняется: функция исполняется в
-    // очереди пачки и может увидеть инструмент до смены. Ключ выводится из
-    // закоммиченного инструмента в componentDidUpdate.
+    // Ключ набора (this.activeSettingsKey) здесь не меняется: функция
+    // исполняется в очереди пачки и может увидеть инструмент до смены. Ключ
+    // выводится из закоммиченного инструмента в componentDidUpdate.
     this.setState((prevState) => {
       const key =
-        settingsKeyForTool(prevState.activeTool.type) ?? activeSettingsKey;
+        settingsKeyForTool(prevState.activeTool.type) ?? this.activeSettingsKey;
       const s = toolSettings[key];
       return {
         currentItemStrokeWidth: s.strokeWidth,
@@ -3409,10 +3412,10 @@ class App extends React.Component<AppProps, AppState> {
     // sdamex: хост засеял наборы до restore (setToolSettings в onExcalidrawAPI):
     // текущие свойства — из набора восстановленного инструмента
     if (this.toolSettingsSeeded) {
-      activeSettingsKey =
+      this.activeSettingsKey =
         settingsKeyForTool(restoredAppState.activeTool.type) ??
-        activeSettingsKey;
-      const s = toolSettings[activeSettingsKey];
+        this.activeSettingsKey;
+      const s = toolSettings[this.activeSettingsKey];
       restoredAppState = {
         ...restoredAppState,
         currentItemStrokeWidth: s.strokeWidth,
@@ -4092,13 +4095,13 @@ class App extends React.Component<AppProps, AppState> {
       this.toolSettingsSeeded &&
       !this.state.isLoading &&
       toolSettingsKey &&
-      toolSettingsKey !== activeSettingsKey
+      toolSettingsKey !== this.activeSettingsKey
     ) {
-      // Инструмент или режим маркера сменились в обход applyToolSettings (Esc,
-      // снятие замка, возврат из ластика или руки, режим маркера от хоста), а
-      // currentItem* ещё держат прежний набор: грузим набор инструмента, а не
-      // пишем в него чужие значения. В этом коммите наборы не меняются. Без
-      // засева хостом наборы не грузятся — поведение прежнее.
+      // Любая смена инструмента в обход setActiveTool (Esc, снятие замка,
+      // Delete, возврат из ластика или руки) или режима маркера от хоста:
+      // currentItem* ещё держат прежний набор, поэтому грузим набор
+      // инструмента, а не пишем в него чужие значения. В этом коммите наборы
+      // не меняются. Без засева хостом наборы не грузятся — поведение прежнее.
       this.applyToolSettings(toolSettingsKey);
     } else if (
       // Sync property changes back to the active settings set
@@ -4107,9 +4110,9 @@ class App extends React.Component<AppProps, AppState> {
       prevState.currentItemStrokeColor !== this.state.currentItemStrokeColor
     ) {
       // Функция setState из setToolSettings исполняется в очереди пачки и
-      // видит инструмент до смены, модульный ключ переживает размонтирование:
-      // при записи ключ выводится заново (без засева — единственная защита)
-      activeSettingsKey = toolSettingsKey ?? activeSettingsKey;
+      // видит инструмент до смены: при записи ключ выводится заново (без
+      // засева — единственная защита)
+      this.activeSettingsKey = toolSettingsKey ?? this.activeSettingsKey;
       this.syncActiveSettings();
       // хосту — после syncActiveSettings, в onChange наборы отстают
       shouldNotifyToolSettings = true;
@@ -6466,7 +6469,7 @@ class App extends React.Component<AppProps, AppState> {
   getIsHighlighterMode = () => isHighlighterMode;
 
   applyToolSettings = (key: "pencil" | "highlighter" | "shape") => {
-    activeSettingsKey = key;
+    this.activeSettingsKey = key;
     const s = toolSettings[key];
     this.setState({
       currentItemStrokeWidth: s.strokeWidth,
@@ -6476,7 +6479,7 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   private syncActiveSettings = () => {
-    toolSettings[activeSettingsKey] = {
+    toolSettings[this.activeSettingsKey] = {
       strokeWidth: this.state.currentItemStrokeWidth,
       opacity: this.state.currentItemOpacity,
       strokeColor: this.state.currentItemStrokeColor,

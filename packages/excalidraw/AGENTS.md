@@ -21,7 +21,7 @@
 | `actions/actionProperties.tsx` | StrokeWidth slider + highlighter modes |
 | `shapePresets/solidFactory.ts` | Wireframe presets, draggable cone apex, triangular prism edges |
 | `straighten.ts` | Hold-to-straighten Procreate-style |
-| `types.ts` | ExcalidrawImperativeAPI surface (undo/redo) |
+| `types.ts` | ExcalidrawImperativeAPI surface (undo/redo, настройки инструментов) |
 | `appState.ts` | gridSnap, three toolSettings sets |
 | `locales/ru-RU.json` | Полный русский (vetted) |
 | `css/styles.scss` | Zoom controls alignment, editor padding |
@@ -48,7 +48,7 @@
 ### Freedraw / Drawing
 
 - **Stroke width slider** -- discrete с squiggle preview (`StrokeWidthRange.tsx`)
-- **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`)
+- **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`); вариант пикера берётся из `app.getIsHighlighterMode()`, поэтому засеянный хостом маркер не сбрасывается триггером пикера
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
 - **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; сырой остаётся только позиция, давление хвоста сглаживается, как у остальных точек (у пера pointerup приходит с pressure 0); число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
 - **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`)
@@ -70,6 +70,11 @@
 ### API surface
 
 - **ExcalidrawImperativeAPI undo/redo** -- `history.undo()`/`redo()` (`App.tsx`, `types.ts`)
+- **Tool settings API** -- `getToolSettings()`, `setToolSettings(partial)`, `onToolSettingsChange(cb)`; снимок `ToolSettingsSnapshot`: наборы `pencil`/`highlighter`/`shape` (`strokeColor`, `strokeWidth`, `opacity`), `highlighterMode`, `pressureSensitivity`, `penModePreference` (`App.tsx`, `types.ts`, `tests/toolSettingsApi.test.tsx`):
+  - засев: `setToolSettings` в `onExcalidrawAPI` успевает до restore (`initializeScene` ждёт `initialData`), и `initializeScene` берёт `currentItem*` из набора восстановленного инструмента; без засева поведение прежнее (ширина 2, `#1e1e1e` до первой смены инструмента). После инициализации набор текущего инструмента применяется сразу. Числа чистятся: ширина > 0, прозрачность 0..100, цвет непустой;
+  - `onToolSettingsChange` зовётся после `syncActiveSettings` в `componentDidUpdate` (в `onChange` наборы отстают на одно изменение), при смене режима маркера, нажима (`pressureSensitivityEnabled`, его отбрасывает `restoreAppState`) и предпочтения режима пера; одинаковый снимок дважды не уходит, сам `setToolSettings` колбэк не зовёт;
+  - `penModePreference` пишет только кнопка режима пера (`togglePenMode(null)`), программный `togglePenMode(true|false)` — нет. Первое касание пером (холст и тулбар) идёт через `detectPen()`: при `false` перо определяется (`penDetected`), режим не включается; `null` — прежнее автовключение. `setToolSettings` с `false` гасит уже включённый режим;
+  - наборы и режим маркера — переменные модуля (общие для экземпляров и переживают размонтирование), предпочтение режима пера — поле экземпляра.
 - **Image URL drop** -- `text/uri-list` → fetch → `insertImages()` (`App.tsx`)
 
 ### Custom UI elements
@@ -99,7 +104,7 @@
 - **Touch identifier tracking** -- ВСЕГДА `touch.identifier` для match fingers между touchstart/touchend. Index matching ломается при separate lifts.
 - **Polygon preset HACK guards** -- 2 guards в `App.tsx` отключают transform handles для linear elements на mobile. Polygon (`element.polygon === true`) должны быть исключены.
 - **Freedraw point count sensitivity** -- LaserPointer рендерит visually different (shorter/thinner) strokes при point count change. НЕ reduce count (RDP 200→5 или straight 200→2 = visible shrinking). Менять только positions.
-- **Three toolSettings sets** (pencil/highlighter/shape) -- `activeSettingsKey` tracks active, switched в `setActiveTool`.
+- **Three toolSettings sets** (pencil/highlighter/shape) -- `activeSettingsKey` tracks active, switched в `setActiveTool`; набор инструмента выбирает `settingsKeyForTool` (рука, ластик, лазер — `null`, набор не трогают). `currentItem*` в состоянии и набор `activeSettingsKey` держатся равными: `syncActiveSettings` пишет состояние обратно в набор на каждом изменении.
 
 ## When working here
 

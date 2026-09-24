@@ -178,9 +178,12 @@ export const isSnappingEnabled = ({
     return (
       (app.state.activeTool.type !== "lasso" || isLassoDragging) &&
       ((app.state.objectsSnapModeEnabled && !event[KEYS.CTRL_OR_CMD]) ||
+        // sdamex: Ctrl turns object snapping on unless it is busy turning
+        // grid snapping off; a shown grid without grid snapping does not
+        // count (#5176)
         (!app.state.objectsSnapModeEnabled &&
           event[KEYS.CTRL_OR_CMD] &&
-          !isGridModeEnabled(app)))
+          app.getEffectiveGridSize() === null))
     );
   }
 

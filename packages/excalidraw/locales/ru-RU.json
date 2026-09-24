@@ -574,6 +574,8 @@
   },
   "stats": {
     "angle": "Угол",
+    "canvas": "Холст",
+    "gridStep": "Шаг сетки",
     "shapes": "Фигуры",
     "height": "Высота",
     "scene": "Сцены",

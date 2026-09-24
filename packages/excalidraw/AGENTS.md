@@ -51,13 +51,14 @@
 - **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`); режим маркера — переменная модуля вне `appState`, а `LayerUI` обёрнут в `React.memo`, поэтому режим идёт пропом `isHighlighterMode` (`App` → `LayerUI` → `ShapesSwitcher` и `MobileMenu` → `MobileToolbar` → `MobileSettingsRow`) и `setHighlighterMode` перерисовывает UI; засеянный хостом маркер, в том числе `setToolSettings` после монтирования без смены инструмента, не сбрасывается триггером пикера на десктопе и телефоне
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
 - **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; сырой остаётся только позиция, давление хвоста сглаживается, как у остальных точек (у пера pointerup приходит с pressure 0); число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
-- **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`)
+- **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`); отпускание во время анимации (250 мс) фиксирует целевую форму без точки отпускания, как после конца анимации; после анимации движение с удержанием вращает и масштабирует штрих, отпускание его фиксирует (#5176, `App.tsx` → `finishStraightenAnimation`, `tests/straightenRelease.test.tsx`)
 
 ### Shapes / Presets
 
 - **Wireframe (3D) UX** -- click-through vertex drag, `move` cursor on vertex, 10px edge grab, block dbl-click group entry, vertex priority over resize handles (`App.tsx`)
 - **Draggable cone apex** -- shared vertex ID `"APEX"` (`solidFactory.ts`)
 - **Triangular prism edges** -- right lateral + top-left solid, not dashed (`solidFactory.ts`)
+- **Line close snap** -- конец открытой линии от `LINE_CLOSE_MIN_POINTS` (4) точек ближе `LINE_CLOSE_SNAP_THRESHOLD` (20 экранных px) к другому концу прилипает к нему и при рисовании, и при перетаскивании первой или последней точки; отпускание замыкает линию в многоугольник. Линия из трёх точек (угол V) не прилипает: замыкание схлопнуло бы её в [A, B, A], а не в многоугольник. Пока отпускание замкнёт линию, на другом конце кольцо-индикатор; у замкнутой линии в редакторе кольцо стоит на стыке (первой точке) всегда, и при перетаскивании средней вершины тоже. Стрелки не замыкаются (#5176, `packages/element/src/linearElementEditor.ts`, `renderer/interactiveScene.ts` → `getLineCloseIndicatorPoint`, `getClosedLineSeamPoint`)
 
 ### Hotkeys / Input
 
@@ -99,6 +100,7 @@
 
 - **TS 5.7 ArrayBuffer breaking** -- `Uint8Array.buffer` returns `ArrayBufferLike`, не `ArrayBuffer`. Use `as ArrayBuffer` / `as BufferSource` / `as BlobPart`.
 - **max-warnings=0** -- ESLint конфигурирован fail-on-warning. Unused imports чистить.
+- **`gridModeEnabled` только показывает сетку** -- у upstream он же включает привязку к сетке, у форка привязка — отдельный `gridSnapEnabled` («Привязка к сетке»). Код, которому нужна привязка, читает `app.getEffectiveGridSize()` или, где есть только `appState` (`packages/element`, рендер), `isGridSnappingEnabled(appState)` = `gridModeEnabled && gridSnapEnabled` (`packages/element/src/utils.ts`). Так работают «Привязка к середине» стрелок, их индикаторы и округление точки крепления к сетке (`binding.ts`, `linearElementEditor.ts`, `interactiveScene.ts`), а также Ctrl при перетаскивании (`snapping.ts` → `isSnappingEnabled`: включает привязку к объектам, если не занят отключением привязки к сетке) и подсказка «Удерживайте Ctrl, чтобы отключить привязку» (`HintViewer.tsx`); при показанной сетке без привязки всё ведёт себя как без сетки (#5176). Хост держит `appState.gridModeEnabled` равным показу сетки доски.
 - **React Strict Mode double-render** -- foreach/map crashes в scene renderers. Try-catch wrapper защищает.
 - **LaserPointer size = radius** -- НЕ diameter (как в perfect-freehand). При `sizeMapping`: `size * sizeMapping() >= 1.1` для start cap.
 - **Touch identifier tracking** -- ВСЕГДА `touch.identifier` для match fingers между touchstart/touchend. Index matching ломается при separate lifts.

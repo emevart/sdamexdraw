@@ -17,7 +17,6 @@ import type { EditorInterface } from "@excalidraw/common";
 import { t } from "../i18n";
 import { getShortcutKey } from "../shortcut";
 import { isEraserActive } from "../appState";
-import { isGridModeEnabled } from "../snapping";
 
 import "./HintViewer.scss";
 
@@ -170,7 +169,12 @@ const getHints = ({
       });
     }
 
-    if (isGridModeEnabled(app) && appState.selectedElementsAreBeingDragged) {
+    // sdamex: only grid snapping makes Ctrl a snapping switch, a shown grid
+    // alone does not (#5176)
+    if (
+      app.getEffectiveGridSize() !== null &&
+      appState.selectedElementsAreBeingDragged
+    ) {
       return t("hints.disableSnapping", {
         shortcut: getTaggedShortcutKey("CtrlOrCmd"),
       });

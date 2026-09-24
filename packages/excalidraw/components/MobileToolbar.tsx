@@ -46,6 +46,7 @@ import type { AppClassProperties, AppState, ToolType } from "../types";
 
 type MobileToolbarProps = {
   app: AppClassProperties;
+  isHighlighterMode: boolean;
   onHandToolToggle: () => void;
   setAppState: React.Component<any, AppState>["setState"];
   renderAction: ActionManager["renderAction"];
@@ -53,6 +54,7 @@ type MobileToolbarProps = {
 
 export const MobileToolbar = ({
   app,
+  isHighlighterMode,
   onHandToolToggle,
   setAppState,
   renderAction,
@@ -63,8 +65,6 @@ export const MobileToolbar = ({
   const [isExtrasOpen, setIsExtrasOpen] = useState(false);
 
   const { TTDDialogTriggerTunnel } = useTunnels();
-
-  const isHighlighterMode = app.getIsHighlighterMode();
 
   // Keep last-active in sync
   useEffect(() => {
@@ -192,6 +192,7 @@ export const MobileToolbar = ({
         elementsMap={app.scene.getNonDeletedElementsMap()}
         renderAction={renderAction}
         app={app}
+        isHighlighterMode={isHighlighterMode}
         setAppState={setAppState}
       />
       <div className="mobile-toolbar__tools-row">

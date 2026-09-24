@@ -1069,12 +1069,14 @@ export const ShapesSwitcher = ({
   activeTool,
   setAppState,
   app,
+  isHighlighterMode,
   UIOptions,
   onSelectionPopoverOpenChange,
 }: {
   activeTool: UIAppState["activeTool"];
   setAppState: React.Component<any, AppState>["setState"];
   app: AppClassProperties;
+  isHighlighterMode: boolean;
   UIOptions: AppProps["UIOptions"];
   onSelectionPopoverOpenChange?: (isOpen: boolean) => void;
 }) => {
@@ -1255,10 +1257,9 @@ export const ShapesSwitcher = ({
 
   const [lastActiveShape, setLastActiveShape] = useState<string>("rectangle");
   const [lastActiveLinear, setLastActiveLinear] = useState<string>("line");
-  // sdamex: вариант пикера — из режима маркера, который может засеять хост
-  const preferredFreedraw = app.getIsHighlighterMode()
-    ? "highlighter"
-    : "freedraw";
+  // sdamex: вариант пикера — из режима маркера, который может засеять хост;
+  // проп, а не app.getIsHighlighterMode(): LayerUI обёрнут в React.memo
+  const preferredFreedraw = isHighlighterMode ? "highlighter" : "freedraw";
 
   // Sync last active shape/linear with current tool
   useEffect(() => {

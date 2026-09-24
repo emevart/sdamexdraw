@@ -93,6 +93,55 @@ describe("api tool settings (sdamex)", () => {
     expect(currentItem()).toEqual(SEED.highlighter);
   });
 
+  // Хост зовёт setToolSettings после загрузки профиля: при выборе набор фигур
+  // не меняется, и тулбар узнаёт о режиме маркера только из пропа LayerUI.
+  // Иначе триггер вернёт карандаш, а хост запишет это в аккаунт.
+  it("(2) a highlighter mode set by the host after mount reaches the picker", async () => {
+    await renderSeeded(SEED);
+    act(() => {
+      h.app.api.setToolSettings({ highlighterMode: true });
+    });
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    const trigger = document.querySelector<HTMLElement>(
+      '[data-testid="toolbar-freedraw"]',
+    );
+    expect(trigger).not.toBeNull();
+    fireEvent.pointerDown(trigger!);
+
+    expect(h.state.activeTool.type).toBe("freedraw");
+    expect(h.app.getIsHighlighterMode()).toBe(true);
+    expect(currentItem()).toEqual(SEED.highlighter);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("(2) a highlighter mode set by the host after mount reaches the phone toolbar", async () => {
+    await renderSeeded(SEED, { UIOptions: { getFormFactor: () => "phone" } });
+    // как в mobileExtrasMenu.test.tsx: resize перечитывает форм-фактор
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(h.app.editorInterface.formFactor).toBe("phone");
+
+    act(() => {
+      h.app.api.setToolSettings({ highlighterMode: true });
+    });
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    const tool = document.querySelector<HTMLInputElement>(
+      '[data-testid="toolbar-freedraw"]',
+    );
+    expect(tool).not.toBeNull();
+    fireEvent.click(tool!);
+
+    expect(h.state.activeTool.type).toBe("freedraw");
+    expect(h.app.getIsHighlighterMode()).toBe(true);
+    expect(currentItem()).toEqual(SEED.highlighter);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("(3) a panel color change updates only the active set and notifies the host", async () => {
     await renderSeeded(SEED);
     act(() => {
@@ -131,6 +180,10 @@ describe("api tool settings (sdamex)", () => {
       h.app.api.setToolSettings(SEED);
       h.app.setActiveTool({ type: "freedraw" });
     });
+    // в одной пачке функция setToolSettings видит инструмент до смены: набор
+    // фигур не должен получить значения карандаша
+    expect(currentItem()).toEqual(SEED.pencil);
+    expect(h.app.api.getToolSettings().shape).toEqual(SEED.shape);
     const onChange = vi.fn();
     h.app.api.onToolSettingsChange(onChange);
 
@@ -167,6 +220,39 @@ describe("api tool settings (sdamex)", () => {
       strokeWidth: 5,
       opacity: 0,
     });
+  });
+
+  it("(4) a host highlighter mode flip with the pencil active keeps the pencil set", async () => {
+    await renderSeeded(SEED);
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    expect(currentItem()).toEqual(SEED.pencil);
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    // инструмент не меняется, меняется набор: значения маркера не должны
+    // уйти в набор карандаша
+    act(() => {
+      h.app.api.setToolSettings({ highlighterMode: true });
+    });
+    expect(currentItem()).toEqual(SEED.highlighter);
+    expect(h.app.api.getToolSettings()).toEqual({
+      ...SEED,
+      highlighterMode: true,
+    });
+    expect(onChange).not.toHaveBeenCalled();
+
+    act(() => {
+      h.app.actionManager.executeAction(actionChangeStrokeColor, "ui", {
+        currentItemStrokeColor: "#f08c00",
+      });
+    });
+    expect(h.app.api.getToolSettings().highlighter).toEqual({
+      ...SEED.highlighter,
+      strokeColor: "#f08c00",
+    });
+    expect(h.app.api.getToolSettings().pencil).toEqual(SEED.pencil);
   });
 
   it("(5) without seeding the upstream defaults stay", async () => {
@@ -253,6 +339,63 @@ describe("api tool settings (sdamex)", () => {
     expect(h.state.penMode).toBe(false);
   });
 
+  it("(6) setToolSettings with penModePreference=true turns a detected pen's mode on", async () => {
+    await renderSeeded({ ...SEED, penModePreference: false });
+    pen.downAt(100, 100);
+    pen.upAt(100, 100);
+    expect(h.state.penDetected).toBe(true);
+    expect(h.state.penMode).toBe(false);
+
+    act(() => {
+      h.app.api.setToolSettings({ penModePreference: true });
+    });
+    expect(h.state.penMode).toBe(true);
+
+    act(() => {
+      h.app.api.setToolSettings({ penModePreference: false });
+    });
+    expect(h.state.penMode).toBe(false);
+
+    // частичный вызов без поля режим пера не трогает
+    act(() => {
+      h.app.togglePenMode(true);
+    });
+    act(() => {
+      h.app.api.setToolSettings({ pencil: SEED.pencil });
+    });
+    expect(h.state.penMode).toBe(true);
+  });
+
+  it("(6) penModePreference=true before any pen contact waits for the pen", async () => {
+    await renderSeeded({ ...SEED, penModePreference: null });
+    act(() => {
+      h.app.api.setToolSettings({ penModePreference: true });
+    });
+    expect(h.state.penDetected).toBe(false);
+    expect(h.state.penMode).toBe(false);
+
+    pen.downAt(100, 100);
+    pen.upAt(100, 100);
+    expect(h.state.penMode).toBe(true);
+  });
+
+  it("(6) setHighlighterMode alone notifies the host once", async () => {
+    await renderSeeded(SEED);
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    // без setActiveTool: уведомление обязано прийти из самого setHighlighterMode
+    act(() => {
+      h.app.setHighlighterMode(true);
+    });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...SEED,
+      highlighterMode: true,
+    });
+  });
+
   it("(6) highlighter mode changes notify the host", async () => {
     await renderSeeded(SEED);
     const onChange = vi.fn();
@@ -293,5 +436,48 @@ describe("api tool settings (sdamex)", () => {
     unmountComponent();
 
     expect(app.toolSettingsChangeEmitter.subscribers).toHaveLength(0);
+  });
+
+  // Колбэк хоста пишет в хранилище (на iOS localStorage бывает переполнен):
+  // его исключение не должно прерывать смену инструмента и ронять редактор
+  it("(9) a throwing host callback neither blocks the editor nor other subscribers", async () => {
+    await renderSeeded(SEED);
+    const error = new Error("QuotaExceededError");
+    const throwing = vi.fn(() => {
+      throw error;
+    });
+    const next = vi.fn();
+    h.app.api.onToolSettingsChange(throwing);
+    h.app.api.onToolSettingsChange(next);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      // режим маркера уведомляет хоста до смены инструмента
+      act(() => {
+        h.app.setHighlighterMode(true);
+        h.app.setActiveTool({ type: "freedraw" });
+      });
+      expect(h.state.activeTool.type).toBe("freedraw");
+      expect(currentItem()).toEqual(SEED.highlighter);
+
+      // уведомление из componentDidUpdate
+      act(() => {
+        h.app.actionManager.executeAction(actionChangeStrokeColor, "ui", {
+          currentItemStrokeColor: "#f08c00",
+        });
+      });
+      expect(h.state.currentItemStrokeColor).toBe("#f08c00");
+      expect(h.app.api.getToolSettings().highlighter.strokeColor).toBe(
+        "#f08c00",
+      );
+
+      expect(throwing).toHaveBeenCalledTimes(2);
+      expect(next).toHaveBeenCalledTimes(2);
+      expect(consoleError).toHaveBeenCalledWith(error);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });

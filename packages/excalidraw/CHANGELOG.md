@@ -15,12 +15,12 @@ Please add the latest change on the top under the correct section.
 
 ### Features
 
-- `ExcalidrawImperativeAPI` получает `getToolSettings`, `setToolSettings` и `onToolSettingsChange` (типы `ToolSettingsSnapshot`, `ToolStrokeSettings`): наборы карандаша, маркера и фигур, режим маркера, нажим и предпочтение режима пера. `setToolSettings` в `onExcalidrawAPI` успевает до restore, и текущие цвет, толщина и прозрачность берутся из набора восстановленного инструмента; без засева поведение прежнее. После инициализации набор текущего инструмента применяется сразу; ширина должна быть больше 0, прозрачность приводится к 0..100. `onToolSettingsChange` зовётся на изменения пользователя (панель свойств, режим маркера, нажим, кнопка режима пера), на сам `setToolSettings` — нет [#15](https://github.com/emevart/sdamexdraw/pull/15).
-- Кнопка режима пера запоминает выбор пользователя (`penModePreference`); если он выключил режим, первое касание пером определяет перо, но режим не включает. `setToolSettings` с `penModePreference: false` выключает уже включённый режим [#15](https://github.com/emevart/sdamexdraw/pull/15).
+- `ExcalidrawImperativeAPI` получает `getToolSettings`, `setToolSettings` и `onToolSettingsChange` (типы `ToolSettingsSnapshot`, `ToolStrokeSettings`): наборы карандаша, маркера и фигур, режим маркера, нажим и предпочтение режима пера. `setToolSettings` в `onExcalidrawAPI` успевает до restore, и текущие цвет, толщина и прозрачность берутся из набора восстановленного инструмента; без засева поведение прежнее. После инициализации набор текущего инструмента применяется сразу; ширина должна быть больше 0, прозрачность приводится к 0..100. `onToolSettingsChange` зовётся на изменения пользователя (панель свойств, режим маркера, нажим, кнопка режима пера), на сам `setToolSettings` — нет; исключение в колбэке хоста не прерывает работу редактора [#15](https://github.com/emevart/sdamexdraw/pull/15).
+- Кнопка режима пера запоминает выбор пользователя (`penModePreference`); если он выключил режим, первое касание пером определяет перо, но режим не включает. `setToolSettings` с `penModePreference: false` выключает режим, с `true` включает его, если перо уже определено [#15](https://github.com/emevart/sdamexdraw/pull/15).
 
 ### Fixes
 
-- Триггер пикера карандаш/маркер открывается с вариантом из текущего режима маркера и больше не сбрасывает маркер в карандаш [#15](https://github.com/emevart/sdamexdraw/pull/15).
+- Триггер пикера карандаш/маркер (и кнопка на телефоне) открывается с вариантом из текущего режима маркера и больше не сбрасывает маркер в карандаш, в том числе когда режим задан `setToolSettings` после монтирования [#15](https://github.com/emevart/sdamexdraw/pull/15).
 - Давление конца штриха сглаживается, как у остальных точек: у пера pointerup приходит с нажимом 0, и кончик двухточечного штриха пером становился тоньше [#15](https://github.com/emevart/sdamexdraw/pull/15).
 - Сдвиг стрелками закрывается в истории и при потере фокуса окна: если отпускание клавиши потерялось (Alt+Tab при зажатой стрелке), сдвиг больше не приклеивается к следующему действию [#15](https://github.com/emevart/sdamexdraw/pull/15).
 

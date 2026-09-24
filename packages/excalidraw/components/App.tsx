@@ -1127,12 +1127,15 @@ class App extends React.Component<AppProps, AppState> {
     if (typeof settings.highlighterMode === "boolean") {
       isHighlighterMode = settings.highlighterMode;
     }
-    if (
+    // режим пера трогает только вызов с этим полем
+    const penModePreference =
       settings.penModePreference === true ||
       settings.penModePreference === false ||
       settings.penModePreference === null
-    ) {
-      this.penModePreference = settings.penModePreference;
+        ? settings.penModePreference
+        : undefined;
+    if (penModePreference !== undefined) {
+      this.penModePreference = penModePreference;
     }
     const pressureSensitivity =
       typeof settings.pressureSensitivity === "boolean"
@@ -1149,18 +1152,27 @@ class App extends React.Component<AppProps, AppState> {
     // Функциональная форма: если вызов пришёл между restore в initializeScene
     // и коммитом состояния, инструмент берётся уже восстановленный. До
     // инициализации запись безвредна: initializeScene переставит набор.
+    // Модульный activeSettingsKey здесь не меняется: функция исполняется в
+    // очереди пачки и может увидеть инструмент до смены. Ключ выводится из
+    // закоммиченного инструмента в componentDidUpdate.
     this.setState((prevState) => {
-      activeSettingsKey =
+      const key =
         settingsKeyForTool(prevState.activeTool.type) ?? activeSettingsKey;
-      const s = toolSettings[activeSettingsKey];
+      const s = toolSettings[key];
       return {
         currentItemStrokeWidth: s.strokeWidth,
         currentItemOpacity: s.opacity,
         currentItemStrokeColor: s.strokeColor,
         pressureSensitivityEnabled:
           pressureSensitivity ?? prevState.pressureSensitivityEnabled,
-        // предпочтение «выключен» гасит уже включённый режим пера
-        penMode: this.penModePreference === false ? false : prevState.penMode,
+        // предпочтение «выключен» гасит режим пера, «включён» включает его,
+        // если перо уже определено (иначе включит первое касание пером)
+        penMode:
+          penModePreference === false
+            ? false
+            : penModePreference === true && prevState.penDetected
+            ? true
+            : prevState.penMode,
       };
     });
   };
@@ -1172,7 +1184,15 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
     this.lastEmittedToolSettings = serialized;
-    this.toolSettingsChangeEmitter.trigger(snapshot);
+    // исключение хоста (например, переполненный localStorage на iOS) не должно
+    // прерывать смену инструмента и ронять редактор из componentDidUpdate
+    for (const subscriber of this.toolSettingsChangeEmitter.subscribers) {
+      try {
+        subscriber(snapshot);
+      } catch (error) {
+        console.error(error);
+      }
+    }
   };
 
   constructor(props: AppProps) {
@@ -2608,6 +2628,10 @@ class App extends React.Component<AppProps, AppState> {
                               !this.scene.getElementsIncludingDeleted().length
                             }
                             app={this}
+                            // sdamex: режим маркера — переменная модуля, вне
+                            // appState; без пропа LayerUI (React.memo) не
+                            // узнает о смене из setToolSettings
+                            isHighlighterMode={isHighlighterMode}
                             isCollaborating={this.props.isCollaborating}
                             generateLinkForSelection={
                               this.props.generateLinkForSelection
@@ -4063,6 +4087,13 @@ class App extends React.Component<AppProps, AppState> {
       prevState.currentItemOpacity !== this.state.currentItemOpacity ||
       prevState.currentItemStrokeColor !== this.state.currentItemStrokeColor
     ) {
+      // sdamex: ключ набора — из закоммиченного инструмента и режима маркера.
+      // Функция setState из setToolSettings исполняется в очереди пачки и
+      // видит инструмент до смены; setToolSettings меняет режим маркера без
+      // смены инструмента; модульный ключ переживает размонтирование. В любом
+      // из этих случаев запись по старому ключу портит чужой набор.
+      activeSettingsKey =
+        settingsKeyForTool(this.state.activeTool.type) ?? activeSettingsKey;
       this.syncActiveSettings();
       // sdamex: хосту — после syncActiveSettings, в onChange наборы отстают
       this.emitToolSettingsChange();
@@ -6414,6 +6445,9 @@ class App extends React.Component<AppProps, AppState> {
   setHighlighterMode = (enabled: boolean) => {
     isHighlighterMode = enabled;
     this.emitToolSettingsChange();
+    // тулбар получает режим пропом LayerUI: нужна отрисовка, даже если
+    // вызов не сопровождается сменой инструмента
+    this.triggerRender();
   };
 
   getIsHighlighterMode = () => isHighlighterMode;

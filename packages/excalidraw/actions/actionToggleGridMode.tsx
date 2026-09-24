@@ -30,5 +30,10 @@ export const actionToggleGridMode = register({
   predicate: (element, appState, props) => {
     return props.gridModeEnabled === undefined;
   },
-  keyTest: (event) => event[KEYS.CTRL_OR_CMD] && event.code === CODES.QUOTE,
+  // sdamex: when the host sets gridModeEnabled the shortcut must not flip the
+  // state that SdamEx shares with collaborators (#5069)
+  keyTest: (event, _appState, _elements, app) =>
+    app.props.gridModeEnabled === undefined &&
+    event[KEYS.CTRL_OR_CMD] &&
+    event.code === CODES.QUOTE,
 });

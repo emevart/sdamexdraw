@@ -31,23 +31,26 @@
 ### UI / Layout
 
 - **Compact styles panel forced** -- non-phone devices (`packages/common/src/editorInterface.ts` → `deriveStylesPanelMode`)
-- **Preferences в hamburger menu** -- grid toggle, grid snap, others (`LayerUI.tsx`)
+- **Preferences в hamburger menu** -- grid toggle, grid snap, others (`LayerUI.tsx`); переключатели, значение которых задаёт prop хоста (`gridModeEnabled`, `viewModeEnabled`), скрыты, их горячие клавиши молчат и не показываются в справке (`HelpDialog.tsx`), кнопки выхода из режима просмотра на телефоне при prop нет, Alt+S не выключает сетку из prop, «Привязка к сетке» видна по эффективной сетке (#5069)
 - **Custom tooltips** -- replaced native `title=` с `<Tooltip>` (400ms, 11px, Apple Pencil hover support)
 - **Canvas background TopPicks visible в compact** (`ColorPicker.tsx`)
 - **Confirm dialog never fullscreen в compact/phone** (`ConfirmDialog.scss`)
 - **Zoom controls alignment** -- `--editor-container-padding` (`css/styles.scss`)
+- **Side resize handles on non-mobile devices** -- n/s/e/w ручки рисуются при `userAgent.isMobileDevice === false`; iPad -- апстримная полоса у стороны, телефон -- ручки (#3042, `packages/element/src/transformHandles.ts` → `getOmitSidesForEditorInterface`)
 
 ### Mobile
 
 - **All 14 shape presets в SHAPE_TOOLS** (`MobileToolBar.tsx`)
 - **Extra tools dropdown opens upward** (`side="top"`, `DropdownMenuContent.tsx`)
 - **Bounding box / transform handles для polygon presets на mobile** (`hasBoundingBox()` + hit-test in `App.tsx`)
+- **No "Generate" header in phone extras** -- пустой слот TTD без заголовка, пункт Mermaid остаётся (#5069, `MobileToolbar.tsx`)
 
 ### Freedraw / Drawing
 
 - **Stroke width slider** -- discrete с squiggle preview (`StrokeWidthRange.tsx`)
 - **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`)
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
+- **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; сырой остаётся только позиция, давление хвоста сглаживается, как у остальных точек (у пера pointerup приходит с pressure 0); число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
 - **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`)
 
 ### Shapes / Presets
@@ -60,6 +63,9 @@
 
 - **Russian ЙЦУКЕН** -- `getLatinKey()` + Proxy in `App.tsx` (см. `packages/common/AGENTS.md`)
 - **Two-finger double-tap undo** -- `touch.identifier` tracking (`App.tsx`)
+- **Arrow-key move history** -- сдвиг стрелками захватывается в историю на keyup: одно нажатие или зажатая клавиша = одна запись undo; если keyup потерян (Alt+Tab при зажатой стрелке), захват делается на blur окна (#5050, `App.tsx` → `pendingArrowKeyMoveCapture`, `flushArrowKeyMoveCapture`)
+- **Bare +/- zoom** -- «=»/«-» и NumpadAdd/NumpadSubtract без модификаторов зумят холст; в полях ввода не срабатывают, в редакторе текста зум только с Ctrl/Cmd (#2667, `actionCanvas.tsx`, `textWysiwyg.tsx`)
+- **No sidebar, no Ctrl+F / Add to library** -- при `DEFAULT_SIDEBAR_AVAILABLE = false` (`packages/common/src/constants.ts`) Ctrl+F остаётся поиском браузера, «Добавить в библиотеку» и строка поиска в справке скрыты; включить вместе с #2708 (#5069)
 
 ### API surface
 
@@ -69,7 +75,8 @@
 ### Custom UI elements
 
 - **Minimap** -- toggleable, рендерит actual element shapes, click/drag navigation (`Minimap.tsx`)
-- **Selection/Lasso ToolPopover** -- dedup с `renderedSelectionPopover` ref (`Actions.tsx`)
+- **Selection/Lasso ToolPopover** -- dedup с `renderedSelectionPopover` ref (`Actions.tsx`); вариант, совпавший с триггером, получает test id `<trigger>-option` (#3081)
+- **Tool tooltip without null** -- подсказка и aria-keyshortcuts инструмента собираются из существующих клавиш (#3079, `shapes.tsx` → `getToolShortcutKeys`)
 
 ### Safety patches
 
@@ -80,6 +87,8 @@
 ### i18n
 
 - **i18n Russian complete** -- все ключи + 13 quality fixes (`locales/ru-RU.json`)
+- **Embed placeholder label translated** -- «Empty Web-Embed»/«IFrame element» через `element.emptyEmbeddablePlaceholder`/`element.iframePlaceholder` (#4886, `embeddable.ts`, `staticScene.ts`, `staticSvgScene.ts`)
+- **"Code" font = Cascadia** -- Comic Shanns без кириллицы помечен deprecated и остаётся для старых надписей; в быстрых шрифтах «Код» = Cascadia (#5069, `FontPicker.tsx`, `packages/common/src/font-metadata.ts`)
 
 ## Gotchas
 

@@ -120,7 +120,7 @@ describe("setActiveTool()", () => {
     fireEvent.pointerDown(lassoTrigger!);
 
     const selectionOption = document.querySelector<HTMLElement>(
-      '.tool-popover-content [data-testid="toolbar-selection"]',
+      '.tool-popover-content [data-testid="toolbar-selection-option"]',
     );
 
     expect(selectionOption).not.toBeNull();
@@ -194,6 +194,27 @@ describe("setActiveTool()", () => {
     });
 
     expect(document.querySelector(".tool-popover-content")).not.toBeNull();
+  });
+
+  it("keeps toolbar test ids unique while the selection picker is open (sdamex #3081)", () => {
+    const countSelectionIds = () =>
+      document.querySelectorAll('[data-testid="toolbar-selection"]').length;
+    const before = countSelectionIds();
+    const selectionTrigger = document.querySelector<HTMLElement>(
+      '.App-toolbar [data-testid="toolbar-selection"]',
+    );
+
+    fireEvent.pointerDown(selectionTrigger!);
+
+    const popover = document.querySelector(".tool-popover-content");
+    expect(popover).not.toBeNull();
+    expect(countSelectionIds()).toBe(before);
+    expect(
+      popover!.querySelector('[data-testid="toolbar-selection-option"]'),
+    ).not.toBeNull();
+    expect(
+      popover!.querySelector('[data-testid="toolbar-lasso"]'),
+    ).not.toBeNull();
   });
 });
 describe("getToolbarTools()", () => {

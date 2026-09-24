@@ -28,6 +28,10 @@ export const actionToggleViewMode = register({
   predicate: (elements, appState, appProps) => {
     return typeof appProps.viewModeEnabled === "undefined";
   },
-  keyTest: (event) =>
-    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.R,
+  // sdamex: the host prop owns view mode, the shortcut must not fight it (#5069)
+  keyTest: (event, _appState, _elements, app) =>
+    app.props.viewModeEnabled === undefined &&
+    !event[KEYS.CTRL_OR_CMD] &&
+    event.altKey &&
+    event.code === CODES.R,
 });

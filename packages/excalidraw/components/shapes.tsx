@@ -1,4 +1,4 @@
-import { KEYS, getLatinKey } from "@excalidraw/common";
+import { KEYS, capitalizeString, getLatinKey } from "@excalidraw/common";
 
 import {
   SelectionIcon,
@@ -320,6 +320,17 @@ export const findShapeByKey = (key: string, app: AppClassProperties) => {
     );
   });
   return shape?.value || null;
+};
+
+// sdamex: keys shown in a toolbar tooltip; tools without a letter or a
+// numeric key (hand, shape presets) no longer print "null" (#3079)
+export const getToolShortcutKeys = (
+  key: string | readonly string[] | null,
+  numericKey: string | null,
+): string[] => {
+  const letter =
+    key && capitalizeString(typeof key === "string" ? key : key[0]);
+  return [letter, numericKey].filter((part): part is string => !!part);
 };
 
 /** Same as findShapeByKey but also checks physical key code for non-latin layouts. */

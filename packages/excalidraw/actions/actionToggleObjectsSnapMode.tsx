@@ -15,12 +15,16 @@ export const actionToggleObjectsSnapMode = register({
     category: "canvas",
     predicate: (appState) => !appState.objectsSnapModeEnabled,
   },
-  perform(elements, appState) {
+  perform(elements, appState, _, app) {
     return {
       appState: {
         ...appState,
         objectsSnapModeEnabled: !this.checked!(appState),
-        gridModeEnabled: false,
+        // sdamex: keep grid mode when the host controls it via props (#5069)
+        gridModeEnabled:
+          app.props.gridModeEnabled === undefined
+            ? false
+            : appState.gridModeEnabled,
       },
       captureUpdate: CaptureUpdateAction.EVENTUALLY,
     };

@@ -2,6 +2,7 @@ import React from "react";
 
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 
+import { actionToggleViewMode } from "../actions/actionToggleViewMode";
 import { useTunnels } from "../context/tunnels";
 import { t } from "../i18n";
 import { getScrollToContentState } from "../scene";
@@ -82,9 +83,13 @@ export const MobileMenu = ({
               />
             </>
           ))}
-        {appState.viewModeEnabled && (
-          <ExitViewModeButton actionManager={actionManager} />
-        )}
+        {/* sdamex: when the host sets viewModeEnabled the prop wins over the
+            action result (syncActionResult), so the button could not leave
+            view mode; show it only while the action is enabled (#5069) */}
+        {appState.viewModeEnabled &&
+          actionManager.isActionEnabled(actionToggleViewMode) && (
+            <ExitViewModeButton actionManager={actionManager} />
+          )}
       </div>
     );
 

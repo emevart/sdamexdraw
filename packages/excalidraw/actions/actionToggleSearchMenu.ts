@@ -3,6 +3,7 @@ import {
   CANVAS_SEARCH_TAB,
   CLASSES,
   DEFAULT_SIDEBAR,
+  DEFAULT_SIDEBAR_AVAILABLE,
 } from "@excalidraw/common";
 
 import { CaptureUpdateAction } from "@excalidraw/element";
@@ -52,7 +53,12 @@ export const actionToggleSearchMenu = register({
   },
   checked: (appState) => appState.gridModeEnabled,
   predicate: (element, appState, props) => {
-    return props.gridModeEnabled === undefined;
+    // sdamex: no sidebar, no search (#5069)
+    return DEFAULT_SIDEBAR_AVAILABLE && props.gridModeEnabled === undefined;
   },
-  keyTest: (event) => event[KEYS.CTRL_OR_CMD] && event.key === KEYS.F,
+  // sdamex: without the sidebar Ctrl+F stays the browser's find (#5069)
+  keyTest: (event) =>
+    DEFAULT_SIDEBAR_AVAILABLE &&
+    event[KEYS.CTRL_OR_CMD] &&
+    event.key === KEYS.F,
 });

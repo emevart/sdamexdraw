@@ -1,10 +1,16 @@
 import React from "react";
 
-import { isDarwin, isFirefox, isWindows } from "@excalidraw/common";
+import {
+  DEFAULT_SIDEBAR_AVAILABLE,
+  isDarwin,
+  isFirefox,
+  isWindows,
+} from "@excalidraw/common";
 
 import { KEYS } from "@excalidraw/common";
 
-import { actionToggleTheme } from "../actions";
+import { actionToggleGridMode, actionToggleTheme } from "../actions";
+import { actionToggleViewMode } from "../actions/actionToggleViewMode";
 import { getShortcutFromShortcutName } from "../actions/shortcuts";
 import { probablySupportsClipboardBlob } from "../clipboard";
 import { t } from "../i18n";
@@ -296,14 +302,19 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
               label={t("buttons.objectsSnapMode")}
               shortcuts={[getShortcutKey("Alt+S")]}
             />
-            <Shortcut
-              label={t("labels.toggleGrid")}
-              shortcuts={[getShortcutKey("CtrlOrCmd+'")]}
-            />
-            <Shortcut
-              label={t("labels.viewMode")}
-              shortcuts={[getShortcutKey("Alt+R")]}
-            />
+            {/* sdamex: no rows for keys the host prop switched off (#5069) */}
+            {actionManager.isActionEnabled(actionToggleGridMode) && (
+              <Shortcut
+                label={t("labels.toggleGrid")}
+                shortcuts={[getShortcutKey("CtrlOrCmd+'")]}
+              />
+            )}
+            {actionManager.isActionEnabled(actionToggleViewMode) && (
+              <Shortcut
+                label={t("labels.viewMode")}
+                shortcuts={[getShortcutKey("Alt+R")]}
+              />
+            )}
             {actionManager.isActionEnabled(actionToggleTheme) && (
               <Shortcut
                 label={t("labels.toggleTheme")}
@@ -314,10 +325,12 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
               label={t("stats.fullTitle")}
               shortcuts={[getShortcutKey("Alt+/")]}
             />
-            <Shortcut
-              label={t("search.title")}
-              shortcuts={[getShortcutFromShortcutName("searchMenu")]}
-            />
+            {DEFAULT_SIDEBAR_AVAILABLE && (
+              <Shortcut
+                label={t("search.title")}
+                shortcuts={[getShortcutFromShortcutName("searchMenu")]}
+              />
+            )}
             <Shortcut
               label={t("commandPalette.title")}
               shortcuts={

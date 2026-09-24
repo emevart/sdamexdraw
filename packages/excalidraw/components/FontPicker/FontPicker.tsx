@@ -34,7 +34,9 @@ export const DEFAULT_FONTS = [
     testId: "font-family-normal",
   },
   {
-    value: FONT_FAMILY["Comic Shanns"],
+    // sdamex: Cascadia has Cyrillic, Comic Shanns does not; existing Comic
+    // Shanns text keeps rendering, the font stays registered (#5069)
+    value: FONT_FAMILY.Cascadia,
     icon: FontFamilyCodeIcon,
     text: t("labels.code"),
     testId: "font-family-code",

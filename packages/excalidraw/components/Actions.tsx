@@ -50,7 +50,7 @@ import { useTextEditorFocus } from "../hooks/useTextEditorFocus";
 
 import { actionToggleViewMode } from "../actions/actionToggleViewMode";
 
-import { getToolbarTools } from "./shapes";
+import { getToolbarTools, getToolShortcutKeys } from "./shapes";
 
 import "./Actions.scss";
 
@@ -1307,9 +1307,8 @@ export const ShapesSwitcher = ({
           const label = t(`toolBar.${value}`);
           const letter =
             key && capitalizeString(typeof key === "string" ? key : key[0]);
-          const shortcut = letter
-            ? `${letter} ${t("helpDialog.or")} ${numericKey}`
-            : `${numericKey}`;
+          const shortcutKeys = getToolShortcutKeys(key, numericKey);
+          const shortcut = shortcutKeys.join(` ${t("helpDialog.or")} `);
           const keybindingLabel =
             value === "hand" ? undefined : numericKey || letter;
 
@@ -1469,10 +1468,14 @@ export const ShapesSwitcher = ({
               icon={icon}
               checked={activeTool.type === value}
               name="editor-current-shape"
-              title={`${capitalizeString(label)} — ${shortcut}`}
+              title={
+                shortcut
+                  ? `${capitalizeString(label)} — ${shortcut}`
+                  : capitalizeString(label)
+              }
               keyBindingLabel={keybindingLabel}
               aria-label={capitalizeString(label)}
-              aria-keyshortcuts={shortcut}
+              aria-keyshortcuts={shortcutKeys.join(" ") || undefined}
               data-testid={`toolbar-${value}`}
               onPointerDown={({ pointerType }) => {
                 // Detect the pen here (pointerType is reliable on pointer-down)

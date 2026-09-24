@@ -49,6 +49,7 @@ import { getShortcutKey } from "../shortcut";
 import { register } from "./register";
 
 import type { AppState } from "../types";
+import type { Action } from "./types";
 
 export const actionChangeViewBackgroundColor = register<Partial<AppState>>({
   name: "changeViewBackgroundColor",
@@ -130,6 +131,12 @@ export const actionClearCanvas = register({
   },
 });
 
+// sdamex: bare "+" / "-" (no modifiers) zoom too (#2667). Inputs never get
+// here (App bails on writable targets before the action manager) and the
+// text editor requires Ctrl/Cmd itself (textWysiwyg.tsx).
+const isBareKey = (event: Parameters<NonNullable<Action["keyTest"]>>[0]) =>
+  !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+
 export const actionZoomIn = register({
   name: "zoomIn",
   label: "buttons.zoomIn",
@@ -172,7 +179,7 @@ export const actionZoomIn = register({
   },
   keyTest: (event) =>
     (event.code === CODES.EQUAL || event.code === CODES.NUM_ADD) &&
-    (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
+    (event[KEYS.CTRL_OR_CMD] || event.shiftKey || isBareKey(event)),
 });
 
 export const actionZoomOut = register({
@@ -217,7 +224,7 @@ export const actionZoomOut = register({
   },
   keyTest: (event) =>
     (event.code === CODES.MINUS || event.code === CODES.NUM_SUBTRACT) &&
-    (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
+    (event[KEYS.CTRL_OR_CMD] || event.shiftKey || isBareKey(event)),
 });
 
 export const actionResetZoom = register({

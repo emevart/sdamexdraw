@@ -392,7 +392,9 @@
     "magicframe": "Wireframe to code",
     "embeddable": "Web Embed",
     "selection": "Selection",
-    "iframe": "IFrame"
+    "iframe": "IFrame",
+    "emptyEmbeddablePlaceholder": "Empty Web-Embed",
+    "iframePlaceholder": "IFrame element"
   },
   "headings": {
     "canvasActions": "Canvas actions",

@@ -401,13 +401,21 @@ export const getEmbedLink = (
 
 export const createPlaceholderEmbeddableLabel = (
   element: ExcalidrawIframeLikeElement,
+  // sdamex: renderers pass translated labels, the defaults keep upstream
+  // English for callers without i18n (#4886)
+  labels: { emptyEmbeddable: string; iframe: string } = {
+    emptyEmbeddable: "Empty Web-Embed",
+    iframe: "IFrame element",
+  },
 ): NonDeletedExcalidrawElement => {
   let text: string;
   if (isIframeElement(element)) {
-    text = "IFrame element";
+    text = labels.iframe;
   } else {
     text =
-      !element.link || element?.link === "" ? "Empty Web-Embed" : element.link;
+      !element.link || element?.link === ""
+        ? labels.emptyEmbeddable
+        : element.link;
   }
 
   const fontSize = Math.max(

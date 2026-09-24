@@ -62,6 +62,7 @@ import { updateElbowArrowPoints } from "./elbowArrow";
 import {
   deconstructDiamondElement,
   deconstructRectanguloidElement,
+  isGridSnappingEnabled,
   projectFixedPointOntoDiagonal,
 } from "./utils";
 
@@ -182,7 +183,7 @@ export const bindOrUnbindBindingElement = (
   const isMidpointSnappingEnabled =
     appState.isMidpointSnappingEnabled &&
     !opts?.angleLocked &&
-    !appState.gridModeEnabled;
+    !isGridSnappingEnabled(appState);
 
   bindOrUnbindBindingElementEdge(
     arrow,
@@ -720,7 +721,7 @@ const getBindingStrategyForDraggingBindingElementEndpoints_simple = (
     elementsMap,
   );
   const hit = getHoveredElementForBinding(
-    opts?.angleLocked || appState.gridModeEnabled
+    opts?.angleLocked || isGridSnappingEnabled(appState)
       ? pointFrom<GlobalPoint>(scenePointerX, scenePointerY)
       : globalPoint,
     elements,
@@ -856,7 +857,7 @@ const getBindingStrategyForDraggingBindingElementEndpoints_simple = (
               arrow,
               opts?.angleLocked
                 ? globalPoint
-                : appState.gridModeEnabled
+                : isGridSnappingEnabled(appState)
                 ? snapBoundPointToGrid(
                     pointFrom<GlobalPoint>(scenePointerX, scenePointerY),
                     hit,
@@ -876,7 +877,7 @@ const getBindingStrategyForDraggingBindingElementEndpoints_simple = (
               appState.zoom,
               appState.isMidpointSnappingEnabled &&
                 !opts?.angleLocked &&
-                !appState.gridModeEnabled,
+                !isGridSnappingEnabled(appState),
             ) || globalPoint,
         }
     : { mode: null };

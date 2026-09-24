@@ -472,6 +472,16 @@ export function deconstructDiamondElement(
   return shape;
 }
 
+/**
+ * sdamex: snapping to the grid is on — the grid is shown AND «Привязка к
+ * сетке» (`gridSnapEnabled`) is on, the same meaning as
+ * `App.getEffectiveGridSize()`. `gridModeEnabled` alone only shows the grid:
+ * arrow midpoint snapping stays on and bound points are not rounded to it.
+ */
+export const isGridSnappingEnabled = (
+  appState: Pick<AppState, "gridModeEnabled" | "gridSnapEnabled">,
+): boolean => appState.gridModeEnabled && appState.gridSnapEnabled;
+
 // Checks if the first and last point are close enough
 // to be considered a loop
 export const isPathALoop = (

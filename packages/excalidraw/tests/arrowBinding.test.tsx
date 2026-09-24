@@ -473,7 +473,12 @@ describe("Arrow binding – non-default case (bindingPreference: disabled)", () 
         angle: Math.PI / 3,
       }) as ExcalidrawBindableElement;
       API.setElements([ellipse]);
-      API.setAppState({ gridModeEnabled: true, gridSize: 20 });
+      // sdamex: binding follows the grid only with grid snapping on (#5176)
+      API.setAppState({
+        gridModeEnabled: true,
+        gridSnapEnabled: true,
+        gridSize: 20,
+      });
 
       const start = sceneCoordsToViewportCoords(
         { sceneX: 400, sceneY: 360 },

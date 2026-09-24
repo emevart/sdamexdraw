@@ -27,6 +27,7 @@ import {
 import {
   deconstructLinearOrFreeDrawElement,
   getSnapOutlineMidPoint,
+  isGridSnappingEnabled,
   isPathALoop,
   moveArrowAboveBindable,
   projectFixedPointOntoDiagonal,
@@ -404,7 +405,7 @@ export class LinearElementEditor {
         isMidpointSnappingEnabled:
           app.state.isMidpointSnappingEnabled &&
           !angleLocked &&
-          !app.state.gridModeEnabled,
+          !isGridSnappingEnabled(app.state),
       },
     );
     // Set the suggested binding from the updates if available
@@ -463,7 +464,7 @@ export class LinearElementEditor {
                 app.state.zoom,
                 app.state.isMidpointSnappingEnabled &&
                   !angleLocked &&
-                  !app.state.gridModeEnabled,
+                  !isGridSnappingEnabled(app.state),
               )
             : linearElementEditor.initialState.altFocusPoint,
       },
@@ -633,7 +634,7 @@ export class LinearElementEditor {
         isMidpointSnappingEnabled:
           app.state.isMidpointSnappingEnabled &&
           !angleLocked &&
-          !app.state.gridModeEnabled,
+          !isGridSnappingEnabled(app.state),
       },
     );
 
@@ -731,7 +732,7 @@ export class LinearElementEditor {
                 app.state.zoom,
                 app.state.isMidpointSnappingEnabled &&
                   !angleLocked &&
-                  !app.state.gridModeEnabled,
+                  !isGridSnappingEnabled(app.state),
               )
             : linearElementEditor.initialState.altFocusPoint,
       },

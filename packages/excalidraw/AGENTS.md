@@ -100,6 +100,7 @@
 
 - **TS 5.7 ArrayBuffer breaking** -- `Uint8Array.buffer` returns `ArrayBufferLike`, не `ArrayBuffer`. Use `as ArrayBuffer` / `as BufferSource` / `as BlobPart`.
 - **max-warnings=0** -- ESLint конфигурирован fail-on-warning. Unused imports чистить.
+- **`gridModeEnabled` только показывает сетку** -- у upstream он же включает привязку к сетке, у форка привязка — отдельный `gridSnapEnabled` («Привязка к сетке»). Код, которому нужна привязка, читает `app.getEffectiveGridSize()` или, где есть только `appState` (`packages/element`, рендер), `isGridSnappingEnabled(appState)` = `gridModeEnabled && gridSnapEnabled` (`packages/element/src/utils.ts`). Так работают «Привязка к середине» стрелок, их индикаторы и округление точки крепления к сетке (`binding.ts`, `linearElementEditor.ts`, `interactiveScene.ts`); при показанной сетке без привязки стрелки ведут себя как без сетки (#5176). Хост держит `appState.gridModeEnabled` равным показу сетки доски.
 - **React Strict Mode double-render** -- foreach/map crashes в scene renderers. Try-catch wrapper защищает.
 - **LaserPointer size = radius** -- НЕ diameter (как в perfect-freehand). При `sizeMapping`: `size * sizeMapping() >= 1.1` для start cap.
 - **Touch identifier tracking** -- ВСЕГДА `touch.identifier` для match fingers между touchstart/touchend. Index matching ломается при separate lifts.

@@ -38,6 +38,7 @@ import {
   isFrameLikeElement,
   isImageElement,
   isLinearElement,
+  isGridSnappingEnabled,
   isLineElement,
   isPathALoop,
   maxBindingDistance_simple,
@@ -447,7 +448,7 @@ const renderBindingHighlightForBindableElement_simple = (
 
   if (
     appState.isMidpointSnappingEnabled &&
-    !appState.gridModeEnabled &&
+    !isGridSnappingEnabled(appState) &&
     !angleLocked &&
     (isFrameLikeElement(suggestedBinding.element) ||
       isBindableElement(suggestedBinding.element))
@@ -843,7 +844,7 @@ const renderBindingHighlightForBindableElement_complex = (
 
     if (
       appState.isMidpointSnappingEnabled &&
-      !appState.gridModeEnabled &&
+      !isGridSnappingEnabled(appState) &&
       (!app.lastPointerMoveEvent ||
         !shouldRotateWithDiscreteAngle(app.lastPointerMoveEvent))
     ) {

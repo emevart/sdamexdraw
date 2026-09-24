@@ -39,6 +39,7 @@ import {
   isImageElement,
   isLinearElement,
   isLineElement,
+  isPathALoop,
   maxBindingDistance_simple,
   isTextElement,
   LinearElementEditor,
@@ -1119,6 +1120,60 @@ const renderElementsBoxHighlight = (
     );
 };
 
+/**
+ * sdamex: while an end of an open line is being drawn (multi-point creation)
+ * or dragged (point dragging) onto the line's other end, returns that other
+ * end: releasing now closes the line (the loop check of finalize and of
+ * LinearElementEditor.handlePointerUp). Arrows and polygons: null.
+ */
+const getLineCloseIndicatorPoint = (
+  appState: InteractiveCanvasAppState,
+  elementsMap: ElementsMap,
+): GlobalPoint | null => {
+  let element: ExcalidrawElement | null = null;
+  let otherEndIndex = 0;
+
+  if (appState.multiElement) {
+    // drawing: the trailing point follows the pointer toward the first one
+    element = appState.multiElement;
+  } else {
+    const linearState = appState.selectedLinearElement;
+    const selectedIndices = linearState?.isDragging
+      ? linearState.selectedPointsIndices
+      : null;
+    if (!linearState || !selectedIndices || selectedIndices.length !== 1) {
+      return null;
+    }
+    const draggedIndex = selectedIndices[0];
+    element = LinearElementEditor.getElement(
+      linearState.elementId,
+      elementsMap,
+    );
+    if (!element || !isLinearElement(element)) {
+      return null;
+    }
+    const lastIndex = element.points.length - 1;
+    if (draggedIndex !== 0 && draggedIndex !== lastIndex) {
+      return null;
+    }
+    otherEndIndex = draggedIndex === 0 ? lastIndex : 0;
+  }
+
+  if (
+    !element ||
+    !isLineElement(element) ||
+    element.polygon ||
+    !isPathALoop(element.points, appState.zoom.value)
+  ) {
+    return null;
+  }
+  const otherEnd = element.points[otherEndIndex];
+  return pointFrom<GlobalPoint>(
+    element.x + otherEnd[0],
+    element.y + otherEnd[1],
+  );
+};
+
 const renderLinearPointHandles = (
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
@@ -1714,29 +1769,32 @@ InteractiveSceneRenderConfig): {
       resolvedEditingLinear,
       elementsMap,
     );
+  }
 
-    // Close indicator: show circle on first point when trailing point is snapped to it
-    if (resolvedEditingLinear.points.length >= 3) {
-      const firstPoint = resolvedEditingLinear.points[0];
-      const lastPoint =
-        resolvedEditingLinear.points[resolvedEditingLinear.points.length - 1];
-      const dist = pointDistance(firstPoint, lastPoint);
-      if (dist < 1) {
-        context.save();
-        context.translate(appState.scrollX, appState.scrollY);
-        const globalX = resolvedEditingLinear.x + firstPoint[0];
-        const globalY = resolvedEditingLinear.y + firstPoint[1];
-        context.beginPath();
-        context.arc(globalX, globalY, 8 / appState.zoom.value, 0, Math.PI * 2);
-        context.strokeStyle =
-          appState.theme === "dark"
-            ? "rgba(99, 102, 241, 0.7)"
-            : "rgba(99, 102, 241, 0.6)";
-        context.lineWidth = 2 / appState.zoom.value;
-        context.stroke();
-        context.restore();
-      }
-    }
+  // Close indicator: ring on the other end while the end being drawn or
+  // dragged is close enough to close the line on release
+  const closeIndicatorPoint = getLineCloseIndicatorPoint(
+    appState,
+    allElementsMap,
+  );
+  if (closeIndicatorPoint) {
+    context.save();
+    context.translate(appState.scrollX, appState.scrollY);
+    context.beginPath();
+    context.arc(
+      closeIndicatorPoint[0],
+      closeIndicatorPoint[1],
+      8 / appState.zoom.value,
+      0,
+      Math.PI * 2,
+    );
+    context.strokeStyle =
+      appState.theme === "dark"
+        ? "rgba(99, 102, 241, 0.7)"
+        : "rgba(99, 102, 241, 0.6)";
+    context.lineWidth = 2 / appState.zoom.value;
+    context.stroke();
+    context.restore();
   }
 
   // Paint selection element

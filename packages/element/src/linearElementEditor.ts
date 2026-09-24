@@ -116,6 +116,19 @@ const getNormalizedPoints = ({
   };
 };
 
+/**
+ * sdamex: an end within LINE_CLOSE_SNAP_THRESHOLD screen px of the other end
+ * snaps onto it, so the line closes (drawing and dragging an end alike).
+ */
+const isWithinLineCloseSnap = (
+  point: LocalPoint,
+  otherEnd: LocalPoint,
+  zoomValue: number,
+) => {
+  const distance = pointDistance(point, otherEnd);
+  return distance > 0 && distance < LINE_CLOSE_SNAP_THRESHOLD / zoomValue;
+};
+
 type PointMoveOtherUpdates = {
   startBinding?: FixedPointBinding | null;
   endBinding?: FixedPointBinding | null;
@@ -345,20 +358,17 @@ export class LinearElementEditor {
       deltaY = newDraggingPointPosition[1] - point[1];
 
       // Snap-to-first: if trailing point is near first point, snap to close polygon
-      if (element.points.length >= 3) {
-        const newPointX = point[0] + deltaX;
-        const newPointY = point[1] + deltaY;
-        const firstPoint = element.points[0];
-        const distToFirst = pointDistance(
-          pointFrom(newPointX, newPointY),
+      const firstPoint = element.points[0];
+      if (
+        element.points.length >= 3 &&
+        isWithinLineCloseSnap(
+          pointFrom<LocalPoint>(point[0] + deltaX, point[1] + deltaY),
           firstPoint,
-        );
-        const zoomValue = app.state.zoom.value;
-        const threshold = LINE_CLOSE_SNAP_THRESHOLD / zoomValue;
-        if (distToFirst < threshold && distToFirst > 0) {
-          deltaX = firstPoint[0] - point[0];
-          deltaY = firstPoint[1] - point[1];
-        }
+          app.state.zoom.value,
+        )
+      ) {
+        deltaX = firstPoint[0] - point[0];
+        deltaY = firstPoint[1] - point[1];
       }
     }
 
@@ -561,6 +571,33 @@ export class LinearElementEditor {
       );
       deltaX = newDraggingPointPosition[0] - draggingPoint[0];
       deltaY = newDraggingPointPosition[1] - draggingPoint[1];
+
+      // sdamex: dragging an end of an open line onto its other end closes
+      // it, like drawing does (handlePointerMove); pointer up turns it into
+      // a polygon (isPathALoop). Arrows do not close.
+      const lastIndex = element.points.length - 1;
+      if (
+        singlePointDragged &&
+        isLineElement(element) &&
+        !element.polygon &&
+        element.points.length >= 3 &&
+        (lastClickedPoint === 0 || lastClickedPoint === lastIndex)
+      ) {
+        const otherEnd = element.points[lastClickedPoint === 0 ? lastIndex : 0];
+        if (
+          isWithinLineCloseSnap(
+            pointFrom<LocalPoint>(
+              draggingPoint[0] + deltaX,
+              draggingPoint[1] + deltaY,
+            ),
+            otherEnd,
+            app.state.zoom.value,
+          )
+        ) {
+          deltaX = otherEnd[0] - draggingPoint[0];
+          deltaY = otherEnd[1] - draggingPoint[1];
+        }
+      }
     }
 
     // Apply the point movement if needed

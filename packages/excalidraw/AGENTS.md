@@ -58,6 +58,7 @@
 - **Wireframe (3D) UX** -- click-through vertex drag, `move` cursor on vertex, 10px edge grab, block dbl-click group entry, vertex priority over resize handles (`App.tsx`)
 - **Draggable cone apex** -- shared vertex ID `"APEX"` (`solidFactory.ts`)
 - **Triangular prism edges** -- right lateral + top-left solid, not dashed (`solidFactory.ts`)
+- **Line close snap** -- конец открытой линии (от трёх точек) ближе `LINE_CLOSE_SNAP_THRESHOLD` (20 экранных px) к другому концу прилипает к нему и при рисовании, и при перетаскивании первой или последней точки; отпускание замыкает линию в многоугольник. Пока отпускание замкнёт линию, на другом конце кольцо-индикатор; у многоугольника без перетаскивания его нет. Стрелки не замыкаются (#5176, `packages/element/src/linearElementEditor.ts`, `renderer/interactiveScene.ts` → `getLineCloseIndicatorPoint`)
 
 ### Hotkeys / Input
 

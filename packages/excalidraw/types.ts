@@ -917,6 +917,7 @@ export type AppClassProperties = {
   addFiles: App["addFiles"];
   addElementsFromPasteOrLibrary: App["addElementsFromPasteOrLibrary"];
   togglePenMode: App["togglePenMode"];
+  detectPen: App["detectPen"];
   toggleLock: App["toggleLock"];
   setActiveTool: App["setActiveTool"];
   setOpenDialog: App["setOpenDialog"];
@@ -1117,7 +1118,41 @@ export interface ExcalidrawImperativeAPI {
    * Elements in the set render at the eraser preview opacity. Pass [] to clear.
    */
   setElementsPendingErasure: (elementIds: readonly string[]) => void;
+  /**
+   * sdamex: настройки инструментов пользователя (наборы карандаша, маркера и
+   * фигур, режим маркера, нажим, предпочтение режима пера) для хранения хостом.
+   */
+  getToolSettings: () => ToolSettingsSnapshot;
+  /**
+   * sdamex: засев настроек инструментов. Вызов в `onExcalidrawAPI` успевает до
+   * restore: набор восстановленного инструмента попадает в `currentItem*`.
+   * После инициализации набор текущего инструмента применяется сразу. Сам
+   * вызов `onToolSettingsChange` не зовёт.
+   */
+  setToolSettings: (settings: Partial<ToolSettingsSnapshot>) => void;
+  /** sdamex: изменение настроек инструментов пользователем. */
+  onToolSettingsChange: (
+    callback: (settings: ToolSettingsSnapshot) => void,
+  ) => UnsubscribeCallback;
 }
+
+/** sdamex: свойства штриха одного набора настроек инструмента. */
+export type ToolStrokeSettings = {
+  strokeColor: string;
+  strokeWidth: number;
+  opacity: number;
+};
+
+/** sdamex: снимок настроек инструментов для хоста. */
+export type ToolSettingsSnapshot = {
+  pencil: ToolStrokeSettings;
+  highlighter: ToolStrokeSettings;
+  shape: ToolStrokeSettings;
+  highlighterMode: boolean;
+  pressureSensitivity: boolean;
+  /** Явный выбор кнопкой режима пера; `null` — выбора не было. */
+  penModePreference: boolean | null;
+};
 
 export type FrameNameBounds = {
   x: number;

@@ -1255,8 +1255,10 @@ export const ShapesSwitcher = ({
 
   const [lastActiveShape, setLastActiveShape] = useState<string>("rectangle");
   const [lastActiveLinear, setLastActiveLinear] = useState<string>("line");
-  const [preferredFreedraw, setPreferredFreedraw] =
-    useState<string>("freedraw");
+  // sdamex: вариант пикера — из режима маркера, который может засеять хост
+  const preferredFreedraw = app.getIsHighlighterMode()
+    ? "highlighter"
+    : "freedraw";
 
   // Sync last active shape/linear with current tool
   useEffect(() => {
@@ -1443,14 +1445,12 @@ export const ShapesSwitcher = ({
                   const isHighlighter = type === "highlighter";
                   app.setHighlighterMode(isHighlighter);
                   app.setActiveTool({ type: "freedraw" });
-                  setPreferredFreedraw(type);
                 }}
                 onSelect={(type: string) => {
                   trackEvent("toolbar", type, "ui");
                   const isHighlighter = type === "highlighter";
                   app.setHighlighterMode(isHighlighter);
                   app.setActiveTool({ type: "freedraw" });
-                  setPreferredFreedraw(type);
                 }}
                 displayedOption={
                   FREEDRAW_TOOLS.find((t) => t.type === preferredFreedraw) ||
@@ -1509,7 +1509,7 @@ export const ShapesSwitcher = ({
                 // delayed click fires).
                 if (pendingPenDetectionRef.current) {
                   pendingPenDetectionRef.current = false;
-                  requestAnimationFrame(() => app.togglePenMode(true));
+                  requestAnimationFrame(() => app.detectPen());
                 }
               }}
             />

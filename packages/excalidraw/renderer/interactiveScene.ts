@@ -41,6 +41,7 @@ import {
   isGridSnappingEnabled,
   isLineElement,
   isPathALoop,
+  LINE_CLOSE_MIN_POINTS,
   maxBindingDistance_simple,
   isTextElement,
   LinearElementEditor,
@@ -1125,7 +1126,8 @@ const renderElementsBoxHighlight = (
  * sdamex: while an end of an open line is being drawn (multi-point creation)
  * or dragged (point dragging) onto the line's other end, returns that other
  * end: releasing now closes the line (the loop check of finalize and of
- * LinearElementEditor.handlePointerUp). Arrows and polygons: null.
+ * LinearElementEditor.handlePointerUp). Arrows, polygons and lines of fewer
+ * than LINE_CLOSE_MIN_POINTS points (a V does not close): null.
  */
 const getLineCloseIndicatorPoint = (
   appState: InteractiveCanvasAppState,
@@ -1164,6 +1166,7 @@ const getLineCloseIndicatorPoint = (
     !element ||
     !isLineElement(element) ||
     element.polygon ||
+    element.points.length < LINE_CLOSE_MIN_POINTS ||
     !isPathALoop(element.points, appState.zoom.value)
   ) {
     return null;
@@ -1173,6 +1176,35 @@ const getLineCloseIndicatorPoint = (
     element.x + otherEnd[0],
     element.y + otherEnd[1],
   );
+};
+
+/**
+ * sdamex: the seam (first point) of a closed line open in the line editor.
+ * The ring stays on it whether or not a point is being dragged, so it does
+ * not blink while a middle vertex moves.
+ */
+const getClosedLineSeamPoint = (
+  appState: InteractiveCanvasAppState,
+  elementsMap: ElementsMap,
+): GlobalPoint | null => {
+  const linearState = appState.selectedLinearElement;
+  if (!linearState?.isEditing) {
+    return null;
+  }
+  const element = LinearElementEditor.getElement(
+    linearState.elementId,
+    elementsMap,
+  );
+  if (
+    !element ||
+    !isLineElement(element) ||
+    element.points.length < 3 ||
+    !pointsEqual(element.points[0], element.points[element.points.length - 1])
+  ) {
+    return null;
+  }
+  const seam = element.points[0];
+  return pointFrom<GlobalPoint>(element.x + seam[0], element.y + seam[1]);
 };
 
 const renderLinearPointHandles = (
@@ -1773,11 +1805,11 @@ InteractiveSceneRenderConfig): {
   }
 
   // Close indicator: ring on the other end while the end being drawn or
-  // dragged is close enough to close the line on release
-  const closeIndicatorPoint = getLineCloseIndicatorPoint(
-    appState,
-    allElementsMap,
-  );
+  // dragged is close enough to close the line on release, and on the seam of
+  // a closed line in the line editor
+  const closeIndicatorPoint =
+    getLineCloseIndicatorPoint(appState, allElementsMap) ??
+    getClosedLineSeamPoint(appState, allElementsMap);
   if (closeIndicatorPoint) {
     context.save();
     context.translate(appState.scrollX, appState.scrollY);

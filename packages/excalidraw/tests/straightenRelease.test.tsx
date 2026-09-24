@@ -12,7 +12,7 @@ import type { LocalPoint } from "@excalidraw/math";
 import { Excalidraw } from "../index";
 import { computeStraightenResult, maxDeviationFromLine } from "../straighten";
 
-import { Pointer } from "./helpers/ui";
+import { Keyboard, Pointer } from "./helpers/ui";
 import { act, render, unmountComponent } from "./test-utils";
 
 const { h } = window;
@@ -108,6 +108,27 @@ describe("hold-to-straighten: release during the animation (sdamex #5176)", () =
     expect(element.pressures.length).toBeLessThanOrEqual(
       target.finalPoints.length,
     );
+  });
+
+  it("release mid-animation makes one undo entry, undo removes the whole stroke", () => {
+    const undoEntriesBefore = h.history.undoStack.length;
+
+    drawWavyLine();
+    act(() => {
+      vi.advanceTimersByTime(STRAIGHTEN_HOLD_TIME);
+    });
+    act(() => {
+      vi.advanceTimersByTime(70);
+    });
+    mouse.upAt(305, 206);
+
+    expect(freedrawElements().length).toBe(1);
+    expect(h.history.undoStack.length).toBe(undoEntriesBefore + 1);
+
+    Keyboard.undo();
+
+    expect(freedrawElements().length).toBe(0);
+    expect(h.history.undoStack.length).toBe(undoEntriesBefore);
   });
 
   it("release mid-animation commits the smoothed curve, without the release point", () => {

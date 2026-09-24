@@ -3,7 +3,10 @@ import React from "react";
 import { KEYS } from "@excalidraw/common";
 import { pointFrom } from "@excalidraw/math";
 
-import { Excalidraw } from "@excalidraw/excalidraw";
+import {
+  Excalidraw,
+  sceneCoordsToViewportCoords,
+} from "@excalidraw/excalidraw";
 import { API } from "@excalidraw/excalidraw/tests/helpers/api";
 import { Keyboard, Pointer } from "@excalidraw/excalidraw/tests/helpers/ui";
 import {
@@ -14,6 +17,8 @@ import {
 } from "@excalidraw/excalidraw/tests/test-utils";
 
 import type { LocalPoint } from "@excalidraw/math";
+
+import type { NormalizedZoomValue } from "@excalidraw/excalidraw/types";
 
 import type { ExcalidrawLinearElement } from "../src/types";
 
@@ -177,7 +182,7 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     expect(closeIndicatorDrawnAt(200, 200)).toBe(false);
   });
 
-  it("a closed line in the editor shows no indicator while nothing is dragged", () => {
+  const enterClosedSquareEditor = () => {
     const polygon = {
       ...API.createElement({
         type: "line",
@@ -193,6 +198,10 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
     } as ExcalidrawLinearElement;
     API.setElements([polygon]);
     enterEditor();
+  };
+
+  it("a closed line in the editor keeps the ring on its seam while nothing is dragged", () => {
+    enterClosedSquareEditor();
 
     clearCanvasEvents();
     // repaint the editor without dragging
@@ -202,6 +211,106 @@ describe("line closes when an end is dragged onto the other end (sdamex #5176)",
       });
     });
     expect(interactiveScenePainted()).toBe(true);
+    expect(closeIndicatorDrawnAt(200, 200)).toBe(true);
+  });
+
+  it("the seam ring stays while a middle vertex of a closed line is dragged", () => {
+    enterClosedSquareEditor();
+
+    mouse.downAt(300, 200);
+    clearCanvasEvents();
+    mouse.moveTo(320, 190);
+    expect(interactiveScenePainted()).toBe(true);
+    expect(closeIndicatorDrawnAt(200, 200)).toBe(true);
+    mouse.upAt(320, 190);
+  });
+
+  // a V: closing [A, B, C] onto A would collapse it into [A, B, A]
+  const OPEN_V = [
+    [0, 0],
+    [100, 50],
+    [0, 100],
+  ].map(([x, y]) => pointFrom<LocalPoint>(x, y));
+
+  it("a three-point line does not snap its end onto the start (dragging)", () => {
+    const line = API.createElement({
+      type: "line",
+      x: 200,
+      y: 200,
+      width: 100,
+      height: 100,
+      roughness: 0,
+      roundness: null,
+      points: OPEN_V,
+    }) as ExcalidrawLinearElement;
+    API.setElements([line]);
+    // select by clicking the upper arm, then open the line editor
+    mouse.clickAt(250, 225);
+    Keyboard.withModifierKeys({ ctrl: true }, () => {
+      Keyboard.keyPress(KEYS.ENTER);
+    });
+    expect(h.state.selectedLinearElement?.isEditing).toBe(true);
+
+    mouse.downAt(200, 300);
+    clearCanvasEvents();
+    // 12.8px from the first point
+    mouse.moveTo(210, 208);
+    expect(interactiveScenePainted()).toBe(true);
     expect(closeIndicatorDrawnAt(200, 200)).toBe(false);
+    mouse.upAt(210, 208);
+
+    const updated = h.elements[0] as ExcalidrawLinearElement;
+    expect(updated.points.length).toBe(3);
+    expect(globalPoint(updated, -1)).toEqual([210, 208]);
+    expect(globalPoint(updated, 0)).toEqual([200, 200]);
+    expect(updated.polygon).toBe(false);
+  });
+
+  it("a three-point line does not snap its end onto the start (drawing)", () => {
+    act(() => {
+      h.app.setActiveTool({ type: "line" });
+    });
+    mouse.clickAt(200, 200);
+    mouse.moveTo(300, 250);
+    mouse.clickAt(300, 250);
+    mouse.moveTo(250, 240);
+    clearCanvasEvents();
+    mouse.moveTo(210, 208);
+
+    const drawing = h.state.multiElement!;
+    expect(drawing.points.length).toBe(3);
+    expect(globalPoint(drawing, -1)).toEqual([210, 208]);
+    expect(interactiveScenePainted()).toBe(true);
+    expect(closeIndicatorDrawnAt(200, 200)).toBe(false);
+  });
+
+  it("the threshold is in screen px: at zoom 2, 12.8px closes and 25px does not", () => {
+    createOpenSquare("line");
+    API.setAppState({
+      zoom: { value: 2 as NormalizedZoomValue },
+      scrollX: 0,
+      scrollY: 0,
+    });
+    const toViewport = (x: number, y: number) =>
+      sceneCoordsToViewportCoords({ sceneX: x, sceneY: y }, h.state);
+    const first = toViewport(200, 200);
+    const last = toViewport(200, 300);
+
+    // 25 screen px (12.5 scene px) from the first point: stays open
+    mouse.downAt(last.x, last.y);
+    mouse.moveTo(first.x + 15, first.y + 20);
+    mouse.upAt(first.x + 15, first.y + 20);
+    let updated = h.elements[0] as ExcalidrawLinearElement;
+    expect(globalPoint(updated, -1)).toEqual([207.5, 210]);
+    expect(updated.polygon).toBe(false);
+
+    // 12.8 screen px (6.4 scene px): closes
+    mouse.downAt(first.x + 15, first.y + 20);
+    mouse.moveTo(first.x + 10, first.y + 8);
+    mouse.upAt(first.x + 10, first.y + 8);
+    updated = h.elements[0] as ExcalidrawLinearElement;
+    expect(globalPoint(updated, -1)).toEqual(globalPoint(updated, 0));
+    expect(globalPoint(updated, 0)).toEqual([200, 200]);
+    expect(updated.polygon).toBe(true);
   });
 });

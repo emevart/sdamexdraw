@@ -4081,27 +4081,40 @@ class App extends React.Component<AppProps, AppState> {
       this.onChangeEmitter.trigger(elements, this.state, this.files);
     }
 
-    // Sync property changes back to the active settings set
+    // sdamex: наборы настроек инструментов. Ключ набора — из закоммиченного
+    // инструмента и режима маркера.
+    const toolSettingsKey = settingsKeyForTool(this.state.activeTool.type);
+    // нажим переключает пункт меню через appState
+    let shouldNotifyToolSettings =
+      prevState.pressureSensitivityEnabled !==
+      this.state.pressureSensitivityEnabled;
     if (
+      this.toolSettingsSeeded &&
+      !this.state.isLoading &&
+      toolSettingsKey &&
+      toolSettingsKey !== activeSettingsKey
+    ) {
+      // Инструмент или режим маркера сменились в обход applyToolSettings (Esc,
+      // снятие замка, возврат из ластика или руки, режим маркера от хоста), а
+      // currentItem* ещё держат прежний набор: грузим набор инструмента, а не
+      // пишем в него чужие значения. В этом коммите наборы не меняются. Без
+      // засева хостом наборы не грузятся — поведение прежнее.
+      this.applyToolSettings(toolSettingsKey);
+    } else if (
+      // Sync property changes back to the active settings set
       prevState.currentItemStrokeWidth !== this.state.currentItemStrokeWidth ||
       prevState.currentItemOpacity !== this.state.currentItemOpacity ||
       prevState.currentItemStrokeColor !== this.state.currentItemStrokeColor
     ) {
-      // sdamex: ключ набора — из закоммиченного инструмента и режима маркера.
       // Функция setState из setToolSettings исполняется в очереди пачки и
-      // видит инструмент до смены; setToolSettings меняет режим маркера без
-      // смены инструмента; модульный ключ переживает размонтирование. В любом
-      // из этих случаев запись по старому ключу портит чужой набор.
-      activeSettingsKey =
-        settingsKeyForTool(this.state.activeTool.type) ?? activeSettingsKey;
+      // видит инструмент до смены, модульный ключ переживает размонтирование:
+      // при записи ключ выводится заново (без засева — единственная защита)
+      activeSettingsKey = toolSettingsKey ?? activeSettingsKey;
       this.syncActiveSettings();
-      // sdamex: хосту — после syncActiveSettings, в onChange наборы отстают
-      this.emitToolSettingsChange();
-    } else if (
-      // нажим переключает пункт меню через appState
-      prevState.pressureSensitivityEnabled !==
-      this.state.pressureSensitivityEnabled
-    ) {
+      // хосту — после syncActiveSettings, в onChange наборы отстают
+      shouldNotifyToolSettings = true;
+    }
+    if (shouldNotifyToolSettings) {
       this.emitToolSettingsChange();
     }
   }

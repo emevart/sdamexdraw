@@ -1,6 +1,7 @@
 import React from "react";
 
-import { actionChangeStrokeColor } from "../actions";
+import { actionChangeStrokeColor, actionDeselect } from "../actions";
+import { actionToggleEraserTool } from "../actions/actionCanvas";
 import { Excalidraw } from "../index";
 
 import { API } from "./helpers/api";
@@ -479,5 +480,109 @@ describe("api tool settings (sdamex)", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  // Переходы в обход applyToolSettings (Esc, снятие замка, возврат из ластика)
+  // меняют инструмент, а currentItem* остаются от прежнего набора: редактор
+  // обязан загрузить набор нового инструмента, а не записать в него чужие
+  // значения (они ушли бы хосту и в аккаунт).
+  const recolorSelected = (color: string) => {
+    const rect = API.createElement({ type: "rectangle" });
+    API.setElements([rect]);
+    API.setSelectedElements([rect]);
+    act(() => {
+      h.app.actionManager.executeAction(actionChangeStrokeColor, "ui", {
+        currentItemStrokeColor: color,
+      });
+    });
+    expect(API.getElement(rect).strokeColor).toBe(color);
+  };
+
+  it("(10) Esc from the marker loads the shape set, a selected shape recolor keeps its width and opacity", async () => {
+    await renderSeeded({ ...SEED, highlighterMode: true });
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    expect(currentItem()).toEqual(SEED.highlighter);
+
+    act(() => {
+      h.app.actionManager.executeAction(actionDeselect, "keyboard");
+    });
+    expect(h.state.activeTool.type).toBe("selection");
+    expect(currentItem()).toEqual(SEED.shape);
+
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+    recolorSelected("#e8590c");
+
+    // при выборе действует набор фигур: цвет выделенной фигуры становится
+    // цветом новых фигур, толщина и прозрачность остаются из набора
+    const expected: ToolSettingsSnapshot = {
+      ...SEED,
+      highlighterMode: true,
+      shape: { ...SEED.shape, strokeColor: "#e8590c" },
+    };
+    expect(h.app.api.getToolSettings()).toEqual(expected);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(expected);
+  });
+
+  it("(10) unlocking the pencil loads the set of the tool it returns to", async () => {
+    await renderSeeded(SEED);
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    act(() => {
+      h.app.toggleLock();
+    });
+    expect(h.state.activeTool.locked).toBe(true);
+    expect(currentItem()).toEqual(SEED.pencil);
+
+    act(() => {
+      h.app.toggleLock();
+    });
+    expect(h.state.activeTool.type).toBe("selection");
+    expect(currentItem()).toEqual(SEED.shape);
+
+    recolorSelected("#e8590c");
+    expect(h.app.api.getToolSettings()).toEqual({
+      ...SEED,
+      shape: { ...SEED.shape, strokeColor: "#e8590c" },
+    });
+  });
+
+  it("(10) a host marker mode change during erasing does not mix the pencil and marker sets", async () => {
+    await renderSeeded({ ...SEED, highlighterMode: true });
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    act(() => {
+      h.app.actionManager.executeAction(actionToggleEraserTool);
+    });
+    expect(h.state.activeTool.type).toBe("eraser");
+
+    act(() => {
+      h.app.api.setToolSettings({ highlighterMode: false });
+    });
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    act(() => {
+      h.app.actionManager.executeAction(actionToggleEraserTool);
+    });
+    expect(h.state.activeTool.type).toBe("freedraw");
+    expect(currentItem()).toEqual(SEED.pencil);
+    expect(onChange).not.toHaveBeenCalled();
+
+    act(() => {
+      h.app.actionManager.executeAction(actionChangeStrokeColor, "ui", {
+        currentItemStrokeColor: "#e8590c",
+      });
+    });
+    expect(h.app.api.getToolSettings()).toEqual({
+      ...SEED,
+      pencil: { ...SEED.pencil, strokeColor: "#e8590c" },
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

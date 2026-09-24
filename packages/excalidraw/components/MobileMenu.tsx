@@ -47,6 +47,7 @@ type MobileMenuProps = {
   renderWelcomeScreen: boolean;
   UIOptions: AppProps["UIOptions"];
   app: AppClassProperties;
+  isHighlighterMode: boolean;
 };
 
 export const MobileMenu = ({
@@ -61,6 +62,7 @@ export const MobileMenu = ({
   renderWelcomeScreen,
   UIOptions,
   app,
+  isHighlighterMode,
   onPenModeToggle,
 }: MobileMenuProps) => {
   const { WelcomeScreenCenterTunnel, MainMenuTunnel } = useTunnels();
@@ -119,6 +121,7 @@ export const MobileMenu = ({
     return (
       <MobileToolbar
         app={app}
+        isHighlighterMode={isHighlighterMode}
         onHandToolToggle={onHandToolToggle}
         setAppState={setAppState}
         renderAction={actionManager.renderAction}

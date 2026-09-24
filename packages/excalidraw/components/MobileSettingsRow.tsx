@@ -132,18 +132,19 @@ export const MobileSettingsRow = ({
   elementsMap,
   renderAction,
   app,
+  isHighlighterMode,
   setAppState,
 }: {
   appState: UIAppState;
   elementsMap: NonDeletedElementsMap | NonDeletedSceneElementsMap;
   renderAction: ActionManager["renderAction"];
   app: AppClassProperties;
+  isHighlighterMode: boolean;
   setAppState: React.Component<any, AppState>["setState"];
 }) => {
   const targetElements = getTargetElements(elementsMap, appState);
   const { container } = useExcalidrawContainer();
   const activeType = appState.activeTool.type;
-  const isHighlighterMode = app.getIsHighlighterMode();
 
   const hasSettings =
     !TOOLS_WITHOUT_SETTINGS.has(activeType) || targetElements.length > 0;

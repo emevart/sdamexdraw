@@ -94,6 +94,8 @@ interface LayerUIProps {
   renderWelcomeScreen: boolean;
   children?: React.ReactNode;
   app: AppClassProperties;
+  /** sdamex: режим маркера (переменная модуля App) — чтобы areEqual его видел */
+  isHighlighterMode: boolean;
   isCollaborating: boolean;
   generateLinkForSelection?: AppProps["generateLinkForSelection"];
 }
@@ -140,6 +142,7 @@ const LayerUI = ({
   renderWelcomeScreen,
   children,
   app,
+  isHighlighterMode,
   isCollaborating,
   generateLinkForSelection,
 }: LayerUIProps) => {
@@ -356,6 +359,7 @@ const LayerUI = ({
                               activeTool={appState.activeTool}
                               UIOptions={UIOptions}
                               app={app}
+                              isHighlighterMode={isHighlighterMode}
                               onSelectionPopoverOpenChange={
                                 setIsSelectionPopoverOpen
                               }
@@ -543,6 +547,7 @@ const LayerUI = ({
       {editorInterface.formFactor === "phone" && (
         <MobileMenu
           app={app}
+          isHighlighterMode={isHighlighterMode}
           appState={appState}
           elements={elements}
           actionManager={actionManager}

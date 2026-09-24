@@ -1069,12 +1069,14 @@ export const ShapesSwitcher = ({
   activeTool,
   setAppState,
   app,
+  isHighlighterMode,
   UIOptions,
   onSelectionPopoverOpenChange,
 }: {
   activeTool: UIAppState["activeTool"];
   setAppState: React.Component<any, AppState>["setState"];
   app: AppClassProperties;
+  isHighlighterMode: boolean;
   UIOptions: AppProps["UIOptions"];
   onSelectionPopoverOpenChange?: (isOpen: boolean) => void;
 }) => {
@@ -1255,8 +1257,9 @@ export const ShapesSwitcher = ({
 
   const [lastActiveShape, setLastActiveShape] = useState<string>("rectangle");
   const [lastActiveLinear, setLastActiveLinear] = useState<string>("line");
-  const [preferredFreedraw, setPreferredFreedraw] =
-    useState<string>("freedraw");
+  // sdamex: вариант пикера — из режима маркера, который может засеять хост;
+  // проп, а не app.getIsHighlighterMode(): LayerUI обёрнут в React.memo
+  const preferredFreedraw = isHighlighterMode ? "highlighter" : "freedraw";
 
   // Sync last active shape/linear with current tool
   useEffect(() => {
@@ -1443,14 +1446,12 @@ export const ShapesSwitcher = ({
                   const isHighlighter = type === "highlighter";
                   app.setHighlighterMode(isHighlighter);
                   app.setActiveTool({ type: "freedraw" });
-                  setPreferredFreedraw(type);
                 }}
                 onSelect={(type: string) => {
                   trackEvent("toolbar", type, "ui");
                   const isHighlighter = type === "highlighter";
                   app.setHighlighterMode(isHighlighter);
                   app.setActiveTool({ type: "freedraw" });
-                  setPreferredFreedraw(type);
                 }}
                 displayedOption={
                   FREEDRAW_TOOLS.find((t) => t.type === preferredFreedraw) ||
@@ -1509,7 +1510,7 @@ export const ShapesSwitcher = ({
                 // delayed click fires).
                 if (pendingPenDetectionRef.current) {
                   pendingPenDetectionRef.current = false;
-                  requestAnimationFrame(() => app.togglePenMode(true));
+                  requestAnimationFrame(() => app.detectPen());
                 }
               }}
             />

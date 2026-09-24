@@ -537,6 +537,8 @@ import type {
   ViewportOffsetsOptions,
   ViewportUIDock,
   ViewportUIName,
+  ToolSettingsSnapshot,
+  ToolStrokeSettings,
 } from "../types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Action, ActionResult } from "../actions/types";
@@ -677,8 +679,43 @@ const toolSettings: Record<"pencil" | "highlighter" | "shape", ToolSettings> = {
   shape: { strokeWidth: 1, opacity: 100, strokeColor: "#000000" },
 };
 
-let activeSettingsKey: "pencil" | "highlighter" | "shape" = "shape";
 let isHighlighterMode = false;
+
+// Набор настроек инструмента; null — инструмент не создаёт элементов и набор
+// не трогает (рука, ластик, лазер)
+const settingsKeyForTool = (
+  type: string,
+): "pencil" | "highlighter" | "shape" | null => {
+  if (type === "freedraw") {
+    return isHighlighterMode ? "highlighter" : "pencil";
+  }
+  if (type === "hand" || type === "eraser" || type === "laser") {
+    return null;
+  }
+  return "shape";
+};
+
+// sdamex: значения набора от хоста приходят из хранилища, мусор отбрасывается:
+// ширина > 0, прозрачность приводится к 0..100, цвет — непустая строка
+const mergeToolStrokeSettings = (
+  prev: ToolSettings,
+  next: Partial<ToolStrokeSettings>,
+): ToolSettings => ({
+  strokeWidth:
+    typeof next.strokeWidth === "number" &&
+    Number.isFinite(next.strokeWidth) &&
+    next.strokeWidth > 0
+      ? next.strokeWidth
+      : prev.strokeWidth,
+  opacity:
+    typeof next.opacity === "number" && Number.isFinite(next.opacity)
+      ? clamp(next.opacity, 0, 100)
+      : prev.opacity,
+  strokeColor:
+    typeof next.strokeColor === "string" && next.strokeColor
+      ? next.strokeColor
+      : prev.strokeColor,
+});
 
 let straightenTimerId: number | null = null;
 let straightenAnimationId: number | null = null;
@@ -995,6 +1032,19 @@ class App extends React.Component<AppProps, AppState> {
   >();
   onRemoveEventListenersEmitter = new Emitter<[]>();
 
+  // sdamex: настройки инструментов для хоста (setToolSettings и соседи)
+  toolSettingsChangeEmitter = new Emitter<[settings: ToolSettingsSnapshot]>();
+  // явный выбор кнопкой режима пера; null — выбора не было
+  penModePreference: boolean | null = null;
+  // хост засеял наборы: initializeScene берёт currentItem* из набора
+  private toolSettingsSeeded = false;
+  // набор, который зеркалят currentItem* этого редактора. Поле экземпляра:
+  // при двух редакторах на странице коммит одного не переставляет ключ другого
+  // (сами наборы и режим маркера общие — это настройки пользователя)
+  private activeSettingsKey: "pencil" | "highlighter" | "shape" = "shape";
+  // последний снимок, о котором знает хост (JSON), — чтобы не звать его зря
+  private lastEmittedToolSettings: string | null = null;
+
   api: ExcalidrawImperativeAPI;
 
   private createExcalidrawAPI(): ExcalidrawImperativeAPI {
@@ -1047,9 +1097,106 @@ class App extends React.Component<AppProps, AppState> {
         this.elementsPendingErasure = new Set(elementIds);
         this.triggerRender();
       },
+      getToolSettings: this.getToolSettings,
+      setToolSettings: this.setToolSettings,
+      onToolSettingsChange: (cb) => this.toolSettingsChangeEmitter.on(cb),
     };
     return api;
   }
+
+  getToolSettings = (): ToolSettingsSnapshot => {
+    const copy = (s: ToolSettings): ToolStrokeSettings => ({
+      strokeColor: s.strokeColor,
+      strokeWidth: s.strokeWidth,
+      opacity: s.opacity,
+    });
+    return {
+      pencil: copy(toolSettings.pencil),
+      highlighter: copy(toolSettings.highlighter),
+      shape: copy(toolSettings.shape),
+      highlighterMode: isHighlighterMode,
+      pressureSensitivity: this.state.pressureSensitivityEnabled !== false,
+      penModePreference: this.penModePreference,
+    };
+  };
+
+  setToolSettings = (settings: Partial<ToolSettingsSnapshot>) => {
+    for (const key of ["pencil", "highlighter", "shape"] as const) {
+      const next = settings[key];
+      if (next && typeof next === "object") {
+        toolSettings[key] = mergeToolStrokeSettings(toolSettings[key], next);
+      }
+    }
+    if (typeof settings.highlighterMode === "boolean") {
+      isHighlighterMode = settings.highlighterMode;
+    }
+    // режим пера трогает только вызов с этим полем
+    const penModePreference =
+      settings.penModePreference === true ||
+      settings.penModePreference === false ||
+      settings.penModePreference === null
+        ? settings.penModePreference
+        : undefined;
+    if (penModePreference !== undefined) {
+      this.penModePreference = penModePreference;
+    }
+    const pressureSensitivity =
+      typeof settings.pressureSensitivity === "boolean"
+        ? settings.pressureSensitivity
+        : undefined;
+
+    // хост и так знает, что записал: его вызов колбэк не зовёт
+    this.lastEmittedToolSettings = JSON.stringify({
+      ...this.getToolSettings(),
+      ...(pressureSensitivity !== undefined && { pressureSensitivity }),
+    });
+    this.toolSettingsSeeded = true;
+
+    // Функциональная форма: если вызов пришёл между restore в initializeScene
+    // и коммитом состояния, инструмент берётся уже восстановленный. До
+    // инициализации запись безвредна: initializeScene переставит набор.
+    // Ключ набора (this.activeSettingsKey) здесь не меняется: функция
+    // исполняется в очереди пачки и может увидеть инструмент до смены. Ключ
+    // выводится из закоммиченного инструмента в componentDidUpdate.
+    this.setState((prevState) => {
+      const key =
+        settingsKeyForTool(prevState.activeTool.type) ?? this.activeSettingsKey;
+      const s = toolSettings[key];
+      return {
+        currentItemStrokeWidth: s.strokeWidth,
+        currentItemOpacity: s.opacity,
+        currentItemStrokeColor: s.strokeColor,
+        pressureSensitivityEnabled:
+          pressureSensitivity ?? prevState.pressureSensitivityEnabled,
+        // предпочтение «выключен» гасит режим пера, «включён» включает его,
+        // если перо уже определено (иначе включит первое касание пером)
+        penMode:
+          penModePreference === false
+            ? false
+            : penModePreference === true && prevState.penDetected
+            ? true
+            : prevState.penMode,
+      };
+    });
+  };
+
+  private emitToolSettingsChange = () => {
+    const snapshot = this.getToolSettings();
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === this.lastEmittedToolSettings) {
+      return;
+    }
+    this.lastEmittedToolSettings = serialized;
+    // исключение хоста (например, переполненный localStorage на iOS) не должно
+    // прерывать смену инструмента и ронять редактор из componentDidUpdate
+    for (const subscriber of this.toolSettingsChangeEmitter.subscribers) {
+      try {
+        subscriber(snapshot);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
 
   constructor(props: AppProps) {
     super(props);
@@ -1077,6 +1224,8 @@ class App extends React.Component<AppProps, AppState> {
       width: window.innerWidth,
       height: window.innerHeight,
     };
+    // исходный снимок: хост узнаёт только об изменениях
+    this.lastEmittedToolSettings = JSON.stringify(this.getToolSettings());
 
     this.refreshEditorInterface();
     this.stylesPanelMode = deriveStylesPanelMode(this.editorInterface);
@@ -2482,6 +2631,10 @@ class App extends React.Component<AppProps, AppState> {
                               !this.scene.getElementsIncludingDeleted().length
                             }
                             app={this}
+                            // sdamex: режим маркера — переменная модуля, вне
+                            // appState; без пропа LayerUI (React.memo) не
+                            // узнает о смене из setToolSettings
+                            isHighlighterMode={isHighlighterMode}
                             isCollaborating={this.props.isCollaborating}
                             generateLinkForSelection={
                               this.props.generateLinkForSelection
@@ -3256,6 +3409,21 @@ class App extends React.Component<AppProps, AppState> {
       toast: this.state.toast,
     };
 
+    // sdamex: хост засеял наборы до restore (setToolSettings в onExcalidrawAPI):
+    // текущие свойства — из набора восстановленного инструмента
+    if (this.toolSettingsSeeded) {
+      this.activeSettingsKey =
+        settingsKeyForTool(restoredAppState.activeTool.type) ??
+        this.activeSettingsKey;
+      const s = toolSettings[this.activeSettingsKey];
+      restoredAppState = {
+        ...restoredAppState,
+        currentItemStrokeWidth: s.strokeWidth,
+        currentItemOpacity: s.opacity,
+        currentItemStrokeColor: s.strokeColor,
+      };
+    }
+
     const viewportAppState = {
       ...restoredAppState,
       width: this.state.width,
@@ -3540,6 +3708,7 @@ class App extends React.Component<AppProps, AppState> {
     this.store.onDurableIncrementEmitter.clear();
     this.appStateObserver.clear();
     this.editorLifecycleEvents.clear();
+    this.toolSettingsChangeEmitter.clear();
     ShapeCache.destroy();
     SnapCache.destroy();
     clearTimeout(touchTimeout);
@@ -3915,13 +4084,41 @@ class App extends React.Component<AppProps, AppState> {
       this.onChangeEmitter.trigger(elements, this.state, this.files);
     }
 
-    // Sync property changes back to the active settings set
+    // sdamex: наборы настроек инструментов. Ключ набора — из закоммиченного
+    // инструмента и режима маркера.
+    const toolSettingsKey = settingsKeyForTool(this.state.activeTool.type);
+    // нажим переключает пункт меню через appState
+    let shouldNotifyToolSettings =
+      prevState.pressureSensitivityEnabled !==
+      this.state.pressureSensitivityEnabled;
     if (
+      this.toolSettingsSeeded &&
+      !this.state.isLoading &&
+      toolSettingsKey &&
+      toolSettingsKey !== this.activeSettingsKey
+    ) {
+      // Любая смена инструмента в обход setActiveTool (Esc, снятие замка,
+      // Delete, возврат из ластика или руки) или режима маркера от хоста:
+      // currentItem* ещё держат прежний набор, поэтому грузим набор
+      // инструмента, а не пишем в него чужие значения. В этом коммите наборы
+      // не меняются. Без засева хостом наборы не грузятся — поведение прежнее.
+      this.applyToolSettings(toolSettingsKey);
+    } else if (
+      // Sync property changes back to the active settings set
       prevState.currentItemStrokeWidth !== this.state.currentItemStrokeWidth ||
       prevState.currentItemOpacity !== this.state.currentItemOpacity ||
       prevState.currentItemStrokeColor !== this.state.currentItemStrokeColor
     ) {
+      // Функция setState из setToolSettings исполняется в очереди пачки и
+      // видит инструмент до смены: при записи ключ выводится заново (без
+      // засева — единственная защита)
+      this.activeSettingsKey = toolSettingsKey ?? this.activeSettingsKey;
       this.syncActiveSettings();
+      // хосту — после syncActiveSettings, в onChange наборы отстают
+      shouldNotifyToolSettings = true;
+    }
+    if (shouldNotifyToolSettings) {
+      this.emitToolSettingsChange();
     }
   }
 
@@ -4764,12 +4961,26 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   togglePenMode = (force: boolean | null) => {
-    this.setState((prevState) => {
-      return {
-        penMode: force ?? !prevState.penMode,
-        penDetected: true,
-      };
-    });
+    if (force === null) {
+      // sdamex: null — явный выбор кнопкой, он становится предпочтением
+      // пользователя (хост хранит его); программный force предпочтение не трогает
+      const penMode = !this.state.penMode;
+      this.penModePreference = penMode;
+      this.setState({ penMode, penDetected: true });
+      this.emitToolSettingsChange();
+      return;
+    }
+    this.setState({ penMode: force, penDetected: true });
+  };
+
+  // sdamex: первое касание пером включает режим пера, если пользователь не
+  // выключил его явно (penModePreference === false)
+  detectPen = () => {
+    this.setState((prevState) =>
+      prevState.penDetected
+        ? null
+        : { penDetected: true, penMode: this.penModePreference !== false },
+    );
   };
 
   onHandToolToggle = () => {
@@ -6241,25 +6452,24 @@ class App extends React.Component<AppProps, AppState> {
 
     // Apply settings based on tool type
     // hand/eraser/laser don't create elements — skip to avoid overwriting settings
-    if (tool.type === "freedraw") {
-      this.applyToolSettings(isHighlighterMode ? "highlighter" : "pencil");
-    } else if (
-      tool.type !== "hand" &&
-      tool.type !== "eraser" &&
-      tool.type !== "laser"
-    ) {
-      this.applyToolSettings("shape");
+    const settingsKey = settingsKeyForTool(tool.type);
+    if (settingsKey) {
+      this.applyToolSettings(settingsKey);
     }
   };
 
   setHighlighterMode = (enabled: boolean) => {
     isHighlighterMode = enabled;
+    this.emitToolSettingsChange();
+    // тулбар получает режим пропом LayerUI: нужна отрисовка, даже если
+    // вызов не сопровождается сменой инструмента
+    this.triggerRender();
   };
 
   getIsHighlighterMode = () => isHighlighterMode;
 
   applyToolSettings = (key: "pencil" | "highlighter" | "shape") => {
-    activeSettingsKey = key;
+    this.activeSettingsKey = key;
     const s = toolSettings[key];
     this.setState({
       currentItemStrokeWidth: s.strokeWidth,
@@ -6269,7 +6479,7 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   private syncActiveSettings = () => {
-    toolSettings[activeSettingsKey] = {
+    toolSettings[this.activeSettingsKey] = {
       strokeWidth: this.state.currentItemStrokeWidth,
       opacity: this.state.currentItemOpacity,
       strokeColor: this.state.currentItemStrokeColor,
@@ -8723,12 +8933,7 @@ class App extends React.Component<AppProps, AppState> {
     //fires only once, if pen is detected, penMode is enabled
     //the user can disable this by toggling the penMode button
     if (!this.state.penDetected && event.pointerType === "pen") {
-      this.setState((prevState) => {
-        return {
-          penMode: true,
-          penDetected: true,
-        };
-      });
+      this.detectPen();
     }
 
     if (

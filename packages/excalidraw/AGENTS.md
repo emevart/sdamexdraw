@@ -21,7 +21,7 @@
 | `actions/actionProperties.tsx` | StrokeWidth slider + highlighter modes |
 | `shapePresets/solidFactory.ts` | Wireframe presets, draggable cone apex, triangular prism edges |
 | `straighten.ts` | Hold-to-straighten Procreate-style |
-| `types.ts` | ExcalidrawImperativeAPI surface (undo/redo) |
+| `types.ts` | ExcalidrawImperativeAPI surface (undo/redo, настройки инструментов) |
 | `appState.ts` | gridSnap, three toolSettings sets |
 | `locales/ru-RU.json` | Полный русский (vetted) |
 | `css/styles.scss` | Zoom controls alignment, editor padding |
@@ -48,7 +48,7 @@
 ### Freedraw / Drawing
 
 - **Stroke width slider** -- discrete с squiggle preview (`StrokeWidthRange.tsx`)
-- **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`)
+- **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`); режим маркера — переменная модуля вне `appState`, а `LayerUI` обёрнут в `React.memo`, поэтому режим идёт пропом `isHighlighterMode` (`App` → `LayerUI` → `ShapesSwitcher` и `MobileMenu` → `MobileToolbar` → `MobileSettingsRow`) и `setHighlighterMode` перерисовывает UI; засеянный хостом маркер, в том числе `setToolSettings` после монтирования без смены инструмента, не сбрасывается триггером пикера на десктопе и телефоне
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
 - **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; сырой остаётся только позиция, давление хвоста сглаживается, как у остальных точек (у пера pointerup приходит с pressure 0); число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
 - **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`)
@@ -70,6 +70,11 @@
 ### API surface
 
 - **ExcalidrawImperativeAPI undo/redo** -- `history.undo()`/`redo()` (`App.tsx`, `types.ts`)
+- **Tool settings API** -- `getToolSettings()`, `setToolSettings(partial)`, `onToolSettingsChange(cb)`; снимок `ToolSettingsSnapshot`: наборы `pencil`/`highlighter`/`shape` (`strokeColor`, `strokeWidth`, `opacity`), `highlighterMode`, `pressureSensitivity`, `penModePreference` (`App.tsx`, `types.ts`, `tests/toolSettingsApi.test.tsx`):
+  - засев: `setToolSettings` в `onExcalidrawAPI` успевает до restore (`initializeScene` ждёт `initialData`), и `initializeScene` берёт `currentItem*` из набора восстановленного инструмента; без засева поведение прежнее (ширина 2, `#1e1e1e` до первой смены инструмента). После инициализации набор текущего инструмента применяется сразу; после засева любая смена инструмента в обход `setActiveTool` и смена режима маркера грузят набор нового инструмента (см. Gotchas). Очистка холста (`actionClearCanvas`) сохраняет `currentItemStrokeColor`/`StrokeWidth`/`Opacity`, поэтому набор не сбрасывается и хост не уведомляется. Числа чистятся: ширина > 0, прозрачность 0..100, цвет непустой;
+  - `onToolSettingsChange` зовётся после `syncActiveSettings` в `componentDidUpdate` (в `onChange` наборы отстают на одно изменение), при смене режима маркера, нажима (`pressureSensitivityEnabled`, его отбрасывает `restoreAppState`) и предпочтения режима пера; одинаковый снимок дважды не уходит, сам `setToolSettings` колбэк не зовёт; исключение колбэка ловится (`console.error`) и не мешает остальным подписчикам и смене инструмента;
+  - `penModePreference` пишет только кнопка режима пера (`togglePenMode(null)`), программный `togglePenMode(true|false)` — нет. Первое касание пером (холст и тулбар) идёт через `detectPen()`: при `false` перо определяется (`penDetected`), режим не включается; `null` — прежнее автовключение. `setToolSettings` с `penModePreference: false` гасит режим, с `true` включает его, если перо уже определено (`penDetected`); вызов без этого поля режим пера не трогает;
+  - наборы и режим маркера — переменные модуля (общие для экземпляров и переживают размонтирование): это настройки пользователя. Ключ активного набора (`activeSettingsKey`), признак засева, предпочтение режима пера и последний отправленный снимок — поля экземпляра.
 - **Image URL drop** -- `text/uri-list` → fetch → `insertImages()` (`App.tsx`)
 
 ### Custom UI elements
@@ -99,7 +104,7 @@
 - **Touch identifier tracking** -- ВСЕГДА `touch.identifier` для match fingers между touchstart/touchend. Index matching ломается при separate lifts.
 - **Polygon preset HACK guards** -- 2 guards в `App.tsx` отключают transform handles для linear elements на mobile. Polygon (`element.polygon === true`) должны быть исключены.
 - **Freedraw point count sensitivity** -- LaserPointer рендерит visually different (shorter/thinner) strokes при point count change. НЕ reduce count (RDP 200→5 или straight 200→2 = visible shrinking). Менять только positions.
-- **Three toolSettings sets** (pencil/highlighter/shape) -- `activeSettingsKey` tracks active, switched в `setActiveTool`.
+- **Three toolSettings sets** (pencil/highlighter/shape) -- `activeSettingsKey` (поле экземпляра App: при двух редакторах на странице коммит одного не переставляет ключ другого) tracks active, switched в `setActiveTool`; набор инструмента выбирает `settingsKeyForTool` (рука, ластик, лазер — `null`, набор не трогают; выбор и лассо — набор фигур, поэтому правка цвета, толщины или прозрачности выделенного элемента меняет набор фигур и уходит хосту). `currentItem*` в состоянии и набор `activeSettingsKey` держатся равными: `syncActiveSettings` пишет состояние обратно в набор на каждом изменении. `componentDidUpdate` на каждом коммите сверяет ключ закоммиченного инструмента и режима маркера с `activeSettingsKey`: при расхождении — любая смена инструмента в обход `setActiveTool` (прямой `setState`/`updateActiveTool` в действиях и обработчиках) или режим маркера от хоста — `currentItem*` ещё держат чужой набор, поэтому набор нового инструмента грузится (`applyToolSettings`), а в этом коммите ничего не пишется (изменение нажима в этом же коммите уходит хосту сразу, наборы в снимке нетронутые). Загрузка — только после засева хостом (`toolSettingsSeeded`) и после инициализации; без засева при записи ключ лишь выводится заново. Функция `setState` из `setToolSettings` исполняется в очереди пачки и видит инструмент до смены, поэтому ключ она не меняет. Действия, сбрасывающие appState к умолчаниям, обязаны сохранять `currentItem*` наборов (как `actionClearCanvas`), иначе умолчания запишутся в активный набор и уйдут хосту.
 
 ## When working here
 

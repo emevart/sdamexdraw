@@ -5,6 +5,7 @@ import { CODES, reseed } from "@excalidraw/common";
 import { actionToggleGridSnap } from "../actions/actionToggleGridSnap";
 import { t } from "../i18n";
 import { Excalidraw } from "../index";
+import { isGridModeEnabled } from "../snapping";
 
 import { API } from "./helpers/api";
 import { Keyboard } from "./helpers/ui";
@@ -42,6 +43,21 @@ describe("host-controlled toggles (sdamex #5069)", () => {
     expect(screen.queryByText(t("labels.toggleGrid"))).toBeNull();
     expect(screen.queryByText(t("labels.viewMode"))).toBeNull();
     expect(screen.queryByText(t("labels.gridSnap"))).not.toBeNull();
+  });
+
+  it("gridModeEnabled={false} hides the grid toggle and grid snapping and wins over state", async () => {
+    // хост выключил сетку доски, а в снимке сцены она ещё включена
+    const { container } = await render(
+      <Excalidraw
+        gridModeEnabled={false}
+        initialData={{ appState: { gridModeEnabled: true } }}
+      />,
+    );
+    expect(isGridModeEnabled(h.app)).toBe(false);
+
+    openPreferences(container);
+    expect(screen.queryByText(t("labels.toggleGrid"))).toBeNull();
+    expect(screen.queryByText(t("labels.gridSnap"))).toBeNull();
   });
 
   it("keeps the toggles when the host does not control them", async () => {

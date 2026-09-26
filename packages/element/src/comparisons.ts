@@ -54,6 +54,11 @@ export const hasStrokeStyle = (type: ElementOrToolType) =>
   type === "arrow" ||
   type === "line";
 
+// sdamex: the pen has a stroke style but no sloppiness (the ink ignores it,
+// and the shared value would only make the next shapes sloppy)
+export const hasSloppiness = (type: ElementOrToolType) =>
+  type !== "freedraw" && hasStrokeStyle(type);
+
 export const canChangeRoundness = (type: ElementOrToolType) =>
   type === "rectangle" ||
   type === "iframe" ||

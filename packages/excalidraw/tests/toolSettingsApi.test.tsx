@@ -87,6 +87,17 @@ describe("api tool settings (sdamex)", () => {
     expect(currentItem()).toEqual(SEED.pencil);
   });
 
+  // Наборы переживают размонтирование, а хост вырезает стиль из снимка доски:
+  // перо, восстановленное при открытии следующей доски, берёт стиль из набора
+  it("(1) seeding gives the restored pencil its stroke style", async () => {
+    const seed = { ...SEED, pencil: { ...SEED.pencil, strokeStyle: "dashed" } };
+    await renderSeeded(seed as ToolSettingsSnapshot, {
+      initialData: { appState: { activeTool: { type: "freedraw" } } as any },
+    });
+
+    expect(currentItem()).toEqual(seed.pencil);
+  });
+
   it("(2) highlighter mode seeds the highlighter set and the picker keeps it", async () => {
     await renderSeeded(
       { ...SEED, highlighterMode: true },

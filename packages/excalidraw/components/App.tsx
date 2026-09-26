@@ -3449,6 +3449,7 @@ class App extends React.Component<AppProps, AppState> {
         currentItemStrokeWidth: s.strokeWidth,
         currentItemOpacity: s.opacity,
         currentItemStrokeColor: s.strokeColor,
+        currentItemStrokeStyle: s.strokeStyle,
       };
     }
 

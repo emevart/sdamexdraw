@@ -3,6 +3,8 @@ import {
   getFreedrawDashArray,
   getFreedrawDashWidth,
   getFreedrawStrokeRadius,
+  hasSloppiness,
+  hasStrokeStyle,
   isDashedFreedraw,
 } from "@excalidraw/element";
 
@@ -63,6 +65,13 @@ describe("dashed pen (sdamex)", () => {
     ).toBe(false);
   });
 
+  it("the pen offers a stroke style but no sloppiness", () => {
+    expect(hasStrokeStyle("freedraw")).toBe(true);
+    expect(hasSloppiness("freedraw")).toBe(false);
+    expect(hasSloppiness("rectangle")).toBe(true);
+    expect(hasSloppiness("image")).toBe(false);
+  });
+
   it("keeps the weight of the solid ink at medium pressure", () => {
     const element = stroke("dashed");
     const width = getFreedrawDashWidth(element);
@@ -96,6 +105,41 @@ describe("dashed pen (sdamex)", () => {
     );
 
     expect(d).toMatch(/^M 5 5 L 5\.01 5$/);
+  });
+
+  it("a click (pointerup moved by 0.0001) is a dot, not a zero-length path", () => {
+    const d = getFreeDrawCenterlineSvgPath(
+      stroke("dotted", [pointFrom(0, 0), pointFrom(0.0001, 0.0001)]),
+    );
+
+    expect(d).toBe("M 0 0 L 0.01 0");
+  });
+
+  it("a closed loop is not a tap", () => {
+    const loop = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) =>
+      pointFrom<LocalPoint>(
+        50 - 50 * Math.cos((i * Math.PI) / 4),
+        50 * Math.sin((i * Math.PI) / 4),
+      ),
+    );
+    loop[loop.length - 1] = loop[0];
+    const d = getFreeDrawCenterlineSvgPath(stroke("dashed", loop));
+
+    expect(d.startsWith("M 0 0 Q")).toBe(true);
+    expect(d.endsWith("L 0 0")).toBe(true);
+  });
+
+  it("writes plain decimals: no exponent notation", () => {
+    const d = getFreeDrawCenterlineSvgPath(
+      stroke("dashed", [
+        pointFrom(0, 0),
+        pointFrom(1e-7, 20),
+        pointFrom(-1e-7, 40),
+        pointFrom(0, 60),
+      ]),
+    );
+
+    expect(d).not.toMatch(/e/);
   });
 
   it("svg export strokes the centerline with the dash pattern", async () => {

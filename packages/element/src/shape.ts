@@ -1327,33 +1327,56 @@ export const getFreedrawDashArray = (
     : [width * 3, width * 3];
 };
 
+/**
+ * A stroke whose points all stay this close to its first point (scene units)
+ * is a tap: a click moves the pointerup point by 0.0001 (App), which rounds to
+ * a zero-length path that round caps do not paint.
+ */
+const FREEDRAW_TAP_EXTENT = 0.5;
+
+/** Two decimals without exponent notation (TO_FIXED_PRECISION cuts "e-16"). */
+const round2 = (value: number) => Math.round(value * 100) / 100 + 0;
+
 // NOTE not cached (-> for SVG export)
 export const getFreeDrawCenterlineSvgPath = (
   element: ExcalidrawFreeDrawElement,
 ): SVGPathString => {
+  if (!element.points.length) {
+    return "" as SVGPathString;
+  }
+  const [x0, y0] = element.points[0];
+  const isTap = element.points.every(
+    ([x, y]) =>
+      Math.abs(x - x0) < FREEDRAW_TAP_EXTENT &&
+      Math.abs(y - y0) < FREEDRAW_TAP_EXTENT,
+  );
+  if (isTap) {
+    // a tiny segment, so the round cap draws a dot
+    return `M ${round2(x0)} ${round2(y0)} L ${round2(x0) + 0.01} ${round2(
+      y0,
+    )}` as SVGPathString;
+  }
+  // a closed stroke (a circle, the letter "o") keeps both ends equal: that is
+  // a loop, not a tap
   const points =
     element.points.length > 2
       ? (simplify(element.points as Mutable<LocalPoint[]>, 0.5) as LocalPoint[])
       : element.points;
-  if (!points.length) {
-    return "" as SVGPathString;
-  }
-  const [x0, y0] = points[0];
   const last = points[points.length - 1];
-  if (points.length === 1 || (last[0] === x0 && last[1] === y0)) {
-    // a tap: a tiny segment, so the round cap draws a dot
-    return `M ${x0} ${y0} L ${x0 + 0.01} ${y0}` as SVGPathString;
-  }
   // quadratic segments through the midpoints: smooth, and still passes
   // through both ends of the stroke
-  const d = [`M ${x0} ${y0}`];
+  const d = [`M ${round2(x0)} ${round2(y0)}`];
   for (let i = 1; i < points.length - 1; i++) {
     const [x, y] = points[i];
     const [nx, ny] = points[i + 1];
-    d.push(`Q ${x} ${y} ${(x + nx) / 2} ${(y + ny) / 2}`);
+    d.push(
+      `Q ${round2(x)} ${round2(y)} ${round2((x + nx) / 2)} ${round2(
+        (y + ny) / 2,
+      )}`,
+    );
   }
-  d.push(`L ${last[0]} ${last[1]}`);
-  return d.join(" ").replace(TO_FIXED_PRECISION, "$1") as SVGPathString;
+  d.push(`L ${round2(last[0])} ${round2(last[1])}`);
+  return d.join(" ") as SVGPathString;
 };
 
 export const getFreedrawOutlinePoints = (

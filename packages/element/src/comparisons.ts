@@ -43,6 +43,8 @@ export const hasStrokeWidth = (type: ElementOrToolType) =>
   type === "line";
 
 export const hasStrokeStyle = (type: ElementOrToolType) =>
+  // sdamex: the pen draws dashed and dotted strokes too
+  type === "freedraw" ||
   type === "rectangle" ||
   type === "iframe" ||
   type === "embeddable" ||

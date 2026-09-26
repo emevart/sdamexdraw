@@ -29,6 +29,11 @@ import {
 } from "@excalidraw/element";
 
 import { getContainingFrame } from "@excalidraw/element";
+import {
+  getFreedrawDashArray,
+  getFreedrawDashWidth,
+  isDashedFreedraw,
+} from "@excalidraw/element";
 
 import { getCornerRadius, isPathALoop } from "@excalidraw/element";
 
@@ -396,13 +401,27 @@ const renderElementToSvg = (
           // stroke (SVGPathString)
 
           const path = svgRoot.ownerDocument.createElementNS(SVG_NS, "path");
-          path.setAttribute(
-            "fill",
-            applyDarkModeFilter(
-              element.strokeColor,
-              renderConfig.theme === THEME.DARK,
-            ),
+          const color = applyDarkModeFilter(
+            element.strokeColor,
+            renderConfig.theme === THEME.DARK,
           );
+          if (isDashedFreedraw(element)) {
+            // sdamex dashed pen: the shape is the centerline
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", color);
+            path.setAttribute(
+              "stroke-width",
+              `${getFreedrawDashWidth(element)}`,
+            );
+            path.setAttribute("stroke-linecap", "round");
+            path.setAttribute("stroke-linejoin", "round");
+            path.setAttribute(
+              "stroke-dasharray",
+              getFreedrawDashArray(element).join(" "),
+            );
+          } else {
+            path.setAttribute("fill", color);
+          }
           path.setAttribute("d", shape);
           wrapper.appendChild(path);
         } else {

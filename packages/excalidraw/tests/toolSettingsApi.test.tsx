@@ -1,6 +1,7 @@
 import React from "react";
 
 import { actionChangeStrokeColor, actionDeselect } from "../actions";
+import { actionChangeStrokeStyle } from "../actions/actionProperties";
 import {
   actionClearCanvas,
   actionToggleEraserTool,
@@ -27,9 +28,24 @@ const pen = new Pointer("pen", 14);
 // Наборы модульные и переживают размонтирование, поэтому каждый тест
 // засевает все поля, от которых зависит
 const SEED: ToolSettingsSnapshot = {
-  pencil: { strokeColor: "#1971c2", strokeWidth: 3, opacity: 90 },
-  highlighter: { strokeColor: "#40c057", strokeWidth: 16, opacity: 30 },
-  shape: { strokeColor: "#e03131", strokeWidth: 2, opacity: 80 },
+  pencil: {
+    strokeColor: "#1971c2",
+    strokeWidth: 3,
+    opacity: 90,
+    strokeStyle: "solid",
+  },
+  highlighter: {
+    strokeColor: "#40c057",
+    strokeWidth: 16,
+    opacity: 30,
+    strokeStyle: "solid",
+  },
+  shape: {
+    strokeColor: "#e03131",
+    strokeWidth: 2,
+    opacity: 80,
+    strokeStyle: "solid",
+  },
   highlighterMode: false,
   pressureSensitivity: true,
   penModePreference: null,
@@ -53,6 +69,7 @@ const currentItem = () => ({
   strokeColor: h.state.currentItemStrokeColor,
   strokeWidth: h.state.currentItemStrokeWidth,
   opacity: h.state.currentItemOpacity,
+  strokeStyle: h.state.currentItemStrokeStyle,
 });
 
 describe("api tool settings (sdamex)", () => {
@@ -200,19 +217,26 @@ describe("api tool settings (sdamex)", () => {
       strokeColor: "#9c36b5",
       strokeWidth: 5,
       opacity: 70,
+      strokeStyle: "solid",
     });
     expect(onChange).not.toHaveBeenCalled();
 
     // мусор из хранилища не ломает набор: ширина > 0, прозрачность 0..100
     act(() => {
       h.app.api.setToolSettings({
-        pencil: { strokeColor: "", strokeWidth: 0, opacity: 250 },
+        pencil: {
+          strokeColor: "",
+          strokeWidth: 0,
+          opacity: 250,
+          strokeStyle: "wavy" as any,
+        },
       });
     });
     expect(currentItem()).toEqual({
       strokeColor: "#9c36b5",
       strokeWidth: 5,
       opacity: 100,
+      strokeStyle: "solid",
     });
     act(() => {
       h.app.api.setToolSettings({
@@ -223,6 +247,7 @@ describe("api tool settings (sdamex)", () => {
       strokeColor: "#9c36b5",
       strokeWidth: 5,
       opacity: 0,
+      strokeStyle: "solid",
     });
   });
 
@@ -639,6 +664,57 @@ describe("api tool settings (sdamex)", () => {
       highlighterMode: true,
     });
     expect(onChange).not.toHaveBeenCalled();
+  });
+  // sdamex (founder 26.09): пунктир у пера. Стиль линии живёт в наборе, как
+  // цвет: пунктирное перо не делает пунктирными фигуры и маркер, а старый
+  // хост без поля strokeStyle стиль не сбрасывает
+  it("(13) a dashed pencil keeps its style per set and survives a host call without the field", async () => {
+    await renderSeeded(SEED);
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    const onChange = vi.fn();
+    h.app.api.onToolSettingsChange(onChange);
+
+    act(() => {
+      h.app.actionManager.executeAction(
+        actionChangeStrokeStyle,
+        "ui",
+        "dashed",
+      );
+    });
+    expect(h.state.currentItemStrokeStyle).toBe("dashed");
+    expect(h.app.api.getToolSettings().pencil.strokeStyle).toBe("dashed");
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      h.app.setActiveTool({ type: "rectangle" });
+    });
+    expect(currentItem()).toEqual(SEED.shape);
+
+    act(() => {
+      h.app.setHighlighterMode(true);
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    expect(currentItem()).toEqual(SEED.highlighter);
+
+    // засев старого хоста: только цвет, толщина и прозрачность
+    act(() => {
+      h.app.setHighlighterMode(false);
+      h.app.api.setToolSettings({
+        pencil: { strokeColor: "#1971c2", strokeWidth: 3, opacity: 90 },
+      });
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    expect(currentItem()).toEqual({ ...SEED.pencil, strokeStyle: "dashed" });
+
+    const pencil = new Pointer("mouse", 32);
+    pencil.downAt(100, 100);
+    pencil.moveTo(150, 120);
+    pencil.moveTo(200, 140);
+    pencil.upAt(200, 140);
+    expect(h.elements.at(-1)?.type).toBe("freedraw");
+    expect(h.elements.at(-1)?.strokeStyle).toBe("dashed");
   });
 });
 

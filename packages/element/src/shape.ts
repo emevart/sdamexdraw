@@ -1078,8 +1078,13 @@ const _generateElementShape = (
         );
       }
 
-      // (2) stroke
-      shapes.push(getFreeDrawSvgPath(element));
+      // (2) stroke: filled ink outline, or the centerline to stroke with a
+      // dash pattern (sdamex dashed pen)
+      shapes.push(
+        isDashedFreedraw(element)
+          ? getFreeDrawCenterlineSvgPath(element)
+          : getFreeDrawSvgPath(element),
+      );
 
       return shapes;
     }
@@ -1286,6 +1291,69 @@ export const getFreedrawStrokeRadius = (
   element: ExcalidrawFreeDrawElement,
 ): number => {
   return (element.strokeWidth * 4.25) / 2;
+};
+
+// -----------------------------------------------------------------------------
+// sdamex: dashed and dotted pen
+// -----------------------------------------------------------------------------
+//
+// The solid ink is a filled outline whose width follows the pen pressure; a
+// dash pattern cannot follow a filled outline. A dashed or dotted stroke is
+// drawn instead as its centerline, stroked with an even width: the width of
+// the solid ink at medium pressure, so switching the style keeps the weight.
+
+/** Width factor of the ink at medium pressure (see `sizeMapping` below). */
+const MEDIUM_PRESSURE_WIDTH = 1 - 0.6 * (1 - Math.sin(Math.PI / 4));
+
+export const isDashedFreedraw = (element: ExcalidrawElement) =>
+  element.type === "freedraw" &&
+  (element.strokeStyle === "dashed" || element.strokeStyle === "dotted");
+
+/** Even line width of a dashed or dotted pen stroke. */
+export const getFreedrawDashWidth = (element: ExcalidrawFreeDrawElement) =>
+  getFreedrawStrokeRadius(element) * 2 * MEDIUM_PRESSURE_WIDTH;
+
+/**
+ * Dash pattern of a dashed or dotted pen stroke, scaled by its width. Round
+ * caps add half a width at each end of a dash, so a dotted stroke is made of
+ * near-zero dashes: each becomes a round dot of the stroke width.
+ */
+export const getFreedrawDashArray = (
+  element: ExcalidrawFreeDrawElement,
+): number[] => {
+  const width = getFreedrawDashWidth(element);
+  return element.strokeStyle === "dotted"
+    ? [width * 0.01, width * 2.5]
+    : [width * 3, width * 3];
+};
+
+// NOTE not cached (-> for SVG export)
+export const getFreeDrawCenterlineSvgPath = (
+  element: ExcalidrawFreeDrawElement,
+): SVGPathString => {
+  const points =
+    element.points.length > 2
+      ? (simplify(element.points as Mutable<LocalPoint[]>, 0.5) as LocalPoint[])
+      : element.points;
+  if (!points.length) {
+    return "" as SVGPathString;
+  }
+  const [x0, y0] = points[0];
+  const last = points[points.length - 1];
+  if (points.length === 1 || (last[0] === x0 && last[1] === y0)) {
+    // a tap: a tiny segment, so the round cap draws a dot
+    return `M ${x0} ${y0} L ${x0 + 0.01} ${y0}` as SVGPathString;
+  }
+  // quadratic segments through the midpoints: smooth, and still passes
+  // through both ends of the stroke
+  const d = [`M ${x0} ${y0}`];
+  for (let i = 1; i < points.length - 1; i++) {
+    const [x, y] = points[i];
+    const [nx, ny] = points[i + 1];
+    d.push(`Q ${x} ${y} ${(x + nx) / 2} ${(y + ny) / 2}`);
+  }
+  d.push(`L ${last[0]} ${last[1]}`);
+  return d.join(" ").replace(TO_FIXED_PRECISION, "$1") as SVGPathString;
 };
 
 export const getFreedrawOutlinePoints = (

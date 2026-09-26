@@ -36,7 +36,7 @@
 - **Canvas background TopPicks visible в compact** (`ColorPicker.tsx`)
 - **Confirm dialog never fullscreen в compact/phone** (`ConfirmDialog.scss`)
 - **Zoom controls alignment** -- `--editor-container-padding` (`css/styles.scss`)
-- **Side resize handles on non-mobile devices** -- n/s/e/w ручки рисуются при `userAgent.isMobileDevice === false`; iPad -- апстримная полоса у стороны, телефон -- ручки (#3042, `packages/element/src/transformHandles.ts` → `getOmitSidesForEditorInterface`)
+- **Eight resize handles on every device** -- n/s/e/w ручки рисуются на компьютере, планшете и телефоне (#3042; iPad по просьбе founder 26.09); планшет по-прежнему тянет и за полосу у стороны. Средние ручки скрываются, если сторона на экране короче `MIDDLE_HANDLES_MIN_SIDE_PX` = 44 CSS px, один порог для отрисовки и попадания (`packages/element/src/transformHandles.ts` → `getOmitSidesForEditorInterface`, `getTransformHandlesFromCoords`; `tests/transformHandlesSides.test.ts`)
 
 ### Mobile
 
@@ -50,6 +50,8 @@
 - **Stroke width slider** -- discrete с squiggle preview (`StrokeWidthRange.tsx`)
 - **Highlighter tool** -- freedraw preset с popup toggle (pencil/marker), yellow default, три toolSettings sets (`App.tsx`, `Actions.tsx`); режим маркера — переменная модуля вне `appState`, а `LayerUI` обёрнут в `React.memo`, поэтому режим идёт пропом `isHighlighterMode` (`App` → `LayerUI` → `ShapesSwitcher` и `MobileMenu` → `MobileToolbar` → `MobileSettingsRow`) и `setHighlighterMode` перерисовывает UI; засеянный хостом маркер, в том числе `setToolSettings` после монтирования без смены инструмента, не сбрасывается триггером пикера на десктопе и телефоне
 - **LaserPointer freedraw rendering** -- `@excalidraw/laser-pointer`, 75° corner detection (`shape.ts`)
+- **Dashed and dotted pen** -- у freedraw есть стиль линии (`hasStrokeStyle`). Сплошной штрих — залитый контур LaserPointer; пунктир и точки рисуются по средней линии ровной шириной (ширина чернил при среднем нажиме), шаблон `[3w, 3w]` и `[0.01w, 2.5w]` с круглыми концами, на холсте и в SVG (`shape.ts` → `isDashedFreedraw`, `getFreeDrawCenterlineSvgPath`; `renderElement.ts`, `staticSvgScene.ts`; `tests/freedrawDashed.test.ts`). Стиль хранится в наборе инструмента (`ToolStrokeSettings.strokeStyle`): пунктир пера не переходит на фигуры и маркер, `setToolSettings` без поля стиль не меняет, мусорное значение отбрасывается
+- **Pen, highlighter and eraser stay after a stroke** -- фигуры и текст возвращаются к выделению, как у upstream без замка (#2321, `tests/toolAfterStroke.test.tsx`)
 - **Stroke end unsmoothed** -- последняя отличная точка подаётся в LaserPointer с `streamline = 0`, чернила доходят до точки pointerup; сырой остаётся только позиция, давление хвоста сглаживается, как у остальных точек (у пера pointerup приходит с pressure 0); число точек не меняется (#3043, `shape.ts` → `getFreedrawOutlinePoints`)
 - **Hold-to-straighten** -- 500ms still timer → line straighten / curve smooth (`straighten.ts`); отпускание во время анимации (250 мс) фиксирует целевую форму без точки отпускания, как после конца анимации; после анимации движение с удержанием вращает и масштабирует штрих, отпускание его фиксирует (#5176, `App.tsx` → `finishStraightenAnimation`, `tests/straightenRelease.test.tsx`)
 
@@ -66,7 +68,7 @@
 - **Two-finger double-tap undo** -- `touch.identifier` tracking (`App.tsx`)
 - **Arrow-key move history** -- сдвиг стрелками захватывается в историю на keyup: одно нажатие или зажатая клавиша = одна запись undo; если keyup потерян (Alt+Tab при зажатой стрелке), захват делается на blur окна (#5050, `App.tsx` → `pendingArrowKeyMoveCapture`, `flushArrowKeyMoveCapture`)
 - **Bare +/- zoom** -- «=»/«-» и NumpadAdd/NumpadSubtract без модификаторов зумят холст; в полях ввода не срабатывают, в редакторе текста зум только с Ctrl/Cmd (#2667, `actionCanvas.tsx`, `textWysiwyg.tsx`)
-- **No sidebar, no Ctrl+F / Add to library** -- при `DEFAULT_SIDEBAR_AVAILABLE = false` (`packages/common/src/constants.ts`) Ctrl+F остаётся поиском браузера, «Добавить в библиотеку» и строка поиска в справке скрыты; включить вместе с #2708 (#5069)
+- **No sidebar, no Ctrl+F / Add to library** -- при `DEFAULT_SIDEBAR_AVAILABLE = false` (`packages/common/src/constants.ts`) Ctrl+F остаётся поиском браузера, «Добавить в библиотеку», строка поиска в справке и пункты «Библиотека» и «Найти на холсте» в палитре команд скрыты; включить вместе с #2708 (#5069, `CommandPalette.tsx`, `tests/commandPaletteNoSidebar.test.tsx`)
 
 ### API surface
 
@@ -94,6 +96,7 @@
 
 - **i18n Russian complete** -- все ключи + 13 quality fixes (`locales/ru-RU.json`)
 - **Embed placeholder label translated** -- «Empty Web-Embed»/«IFrame element» через `element.emptyEmbeddablePlaceholder`/`element.iframePlaceholder` (#4886, `embeddable.ts`, `staticScene.ts`, `staticSvgScene.ts`)
+- **Embed refusal toast** -- `toast.unableToEmbed` не отправляет на GitHub за белым списком: какие ссылки встраиваются, решает хост (#5070, `locales/en.json`, `locales/ru-RU.json`, `tests/embedToastCopy.test.ts`)
 - **"Code" font = Cascadia** -- Comic Shanns без кириллицы помечен deprecated и остаётся для старых надписей; в быстрых шрифтах «Код» = Cascadia (#5069, `FontPicker.tsx`, `packages/common/src/font-metadata.ts`)
 
 ## Gotchas

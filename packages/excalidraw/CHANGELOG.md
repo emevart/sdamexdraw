@@ -11,6 +11,22 @@ The change should be grouped under one of the below section and must contain PR 
 Please add the latest change on the top under the correct section.
 -->
 
+## 0.30.6 (2026-09-26)
+
+### Features
+
+- Пунктир и точки у пера: стиль линии в панели свойств доступен и для свободного рисования. Сплошной штрих остаётся залитым контуром, который следует нажиму; пунктирный и точечный рисуются по средней линии ровной шириной — шириной чернил при среднем нажиме, на холсте и в экспорте SVG (`isDashedFreedraw`, `getFreeDrawCenterlineSvgPath`, `getFreedrawDashWidth`, `getFreedrawDashArray` в `@excalidraw/element`). Касание и щелчок рисуют точку, замкнутый штрих (круг, «о») остаётся контуром. Стиль хранится в наборе инструмента, в том числе при открытии редактора с восстановленным пером: пунктир пера не переходит на фигуры и маркер. У пера в панели есть стиль линии, но нет «Небрежности» (`hasSloppiness`): на чернила она не влияет и меняла бы следующие фигуры. `ToolStrokeSettings` получает необязательное `strokeStyle`; `getToolSettings` и `onToolSettingsChange` отдают его, `setToolSettings` без поля стиль не меняет, неизвестное значение отбрасывается [#18](https://github.com/emevart/sdamexdraw/pull/18).
+- Восемь ручек изменения размера на всех устройствах, включая планшет: средние ручки рисуются и на iPad, планшет по-прежнему тянет и за полосу у стороны. Средние ручки скрываются, если сторона фигуры на экране короче 44 px (`MIDDLE_HANDLES_MIN_SIDE_PX`, прежде 40 px). Где зоны ручек перекрываются (палец: зона 28 px, поворот в 16 px над средней верхней ручкой), выбирается ручка с ближайшим центром: раньше касание чуть выше средней ручки поворачивало фигуру. У мыши и пера зоны не перекрываются, поведение прежнее [#18](https://github.com/emevart/sdamexdraw/pull/18).
+
+### Fixes
+
+- Палитра команд без боковой панели (`DEFAULT_SIDEBAR_AVAILABLE = false`) не предлагает «Библиотеку» и «Найти на холсте»: они ничего не открывали (emevart/billion-dollars#5069) [#18](https://github.com/emevart/sdamexdraw/pull/18).
+- Тост `unableToEmbed` больше не отправляет на GitHub за белым списком: «Эту ссылку нельзя встроить на доску» (emevart/billion-dollars#5070, #4297) [#18](https://github.com/emevart/sdamexdraw/pull/18).
+
+### Chore
+
+- Тест-сторож: перо, маркер и ластик остаются выбранными после штриха, фигуры возвращаются к выделению (emevart/billion-dollars#2321) [#18](https://github.com/emevart/sdamexdraw/pull/18).
+
 ## 0.30.5 (2026-09-25)
 
 ### Fixes

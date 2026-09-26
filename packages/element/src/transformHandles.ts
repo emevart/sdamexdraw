@@ -55,6 +55,13 @@ const transformHandleSizes: { [k in PointerType]: number } = {
 
 const ROTATION_RESIZE_HANDLE_GAP = 16;
 
+// sdamex: n/s/e/w handles appear only when the side is at least this long on
+// screen (CSS px). 44 px is a finger-sized target: on a shorter side the middle
+// handle would crowd the corners and a finger would grab the wrong one.
+// Upstream used 5 mouse handles (40 px); the value is the same for rendering and
+// hit testing, so a drawn handle is always hittable.
+export const MIDDLE_HANDLES_MIN_SIDE_PX = 44;
+
 export const DEFAULT_OMIT_SIDES = {
   e: true,
   s: true,
@@ -122,20 +129,13 @@ export const canResizeFromSides = (editorInterface: EditorInterface) => {
 };
 
 export const getOmitSidesForEditorInterface = (
-  editorInterface: EditorInterface,
+  _editorInterface: EditorInterface,
 ) => {
-  // sdamex: devices with a mouse or trackpad draw the n/s/e/w handles, the
-  // invisible side band alone was hard to find (#3042). Touch devices keep
-  // upstream behaviour: tablets resize from the side band, phones get the
-  // side handles because they cannot use the band.
-  if (!editorInterface.userAgent.isMobileDevice) {
-    return {};
-  }
-
-  if (canResizeFromSides(editorInterface)) {
-    return DEFAULT_OMIT_SIDES;
-  }
-
+  // sdamex: every device draws the n/s/e/w handles. With a mouse or trackpad
+  // the invisible side band alone was hard to find (#3042); on a tablet the
+  // founder asked for the same eight handles as on a computer (26.09). Tablets
+  // still resize from the side band too (`canResizeFromSides`). Small shapes
+  // drop the middle handles by size, see MIDDLE_HANDLES_MIN_SIDE_PX.
   return {};
 };
 
@@ -223,9 +223,9 @@ export const getTransformHandlesFromCoords = (
   };
 
   // We only want to show height handles (all cardinal directions)  above a certain size
-  // Note: we render using "mouse" size so we should also use "mouse" size for this check
-  const minimumSizeForEightHandles =
-    (5 * transformHandleSizes.mouse) / zoom.value;
+  // sdamex: one on-screen threshold for every pointer type, see
+  // MIDDLE_HANDLES_MIN_SIDE_PX.
+  const minimumSizeForEightHandles = MIDDLE_HANDLES_MIN_SIDE_PX / zoom.value;
   if (Math.abs(width) > minimumSizeForEightHandles) {
     if (!omitSides.n) {
       transformHandles.n = generateTransformHandle(

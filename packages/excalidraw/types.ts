@@ -33,6 +33,7 @@ import type {
   ExcalidrawNonSelectionElement,
   BindMode,
   ExcalidrawTextElement,
+  StrokeStyle,
 } from "@excalidraw/element/types";
 
 import type {
@@ -1142,6 +1143,12 @@ export type ToolStrokeSettings = {
   strokeColor: string;
   strokeWidth: number;
   opacity: number;
+  /**
+   * sdamex: сплошной, пунктир или точки. Своё у пера, маркера и фигур: пунктир
+   * пера не переходит на фигуры. `setToolSettings` без поля стиль не меняет;
+   * по умолчанию сплошной.
+   */
+  strokeStyle?: StrokeStyle;
 };
 
 /** sdamex: снимок настроек инструментов для хоста. */

@@ -301,6 +301,7 @@ import type {
   SceneElementsMap,
   NonDeletedSceneElementsMap,
   ExcalidrawBindableElement,
+  StrokeStyle,
 } from "@excalidraw/element/types";
 
 import type { Mutable, ValueOf } from "@excalidraw/common/utility-types";
@@ -671,13 +672,32 @@ type ToolSettings = {
   strokeWidth: number;
   opacity: number;
   strokeColor: string;
+  // sdamex: own per set, so a dashed pen does not make the shapes dashed
+  strokeStyle: StrokeStyle;
 };
 
 const toolSettings: Record<"pencil" | "highlighter" | "shape", ToolSettings> = {
-  pencil: { strokeWidth: 1, opacity: 100, strokeColor: "#000000" },
-  highlighter: { strokeWidth: 12, opacity: 40, strokeColor: "#ffeb3b" },
-  shape: { strokeWidth: 1, opacity: 100, strokeColor: "#000000" },
+  pencil: {
+    strokeWidth: 1,
+    opacity: 100,
+    strokeColor: "#000000",
+    strokeStyle: "solid",
+  },
+  highlighter: {
+    strokeWidth: 12,
+    opacity: 40,
+    strokeColor: "#ffeb3b",
+    strokeStyle: "solid",
+  },
+  shape: {
+    strokeWidth: 1,
+    opacity: 100,
+    strokeColor: "#000000",
+    strokeStyle: "solid",
+  },
 };
+
+const STROKE_STYLES: readonly StrokeStyle[] = ["solid", "dashed", "dotted"];
 
 let isHighlighterMode = false;
 
@@ -715,6 +735,9 @@ const mergeToolStrokeSettings = (
     typeof next.strokeColor === "string" && next.strokeColor
       ? next.strokeColor
       : prev.strokeColor,
+  strokeStyle: STROKE_STYLES.includes(next.strokeStyle as StrokeStyle)
+    ? (next.strokeStyle as StrokeStyle)
+    : prev.strokeStyle,
 });
 
 let straightenTimerId: number | null = null;
@@ -1112,6 +1135,7 @@ class App extends React.Component<AppProps, AppState> {
       strokeColor: s.strokeColor,
       strokeWidth: s.strokeWidth,
       opacity: s.opacity,
+      strokeStyle: s.strokeStyle,
     });
     return {
       pencil: copy(toolSettings.pencil),
@@ -1169,6 +1193,7 @@ class App extends React.Component<AppProps, AppState> {
         currentItemStrokeWidth: s.strokeWidth,
         currentItemOpacity: s.opacity,
         currentItemStrokeColor: s.strokeColor,
+        currentItemStrokeStyle: s.strokeStyle,
         pressureSensitivityEnabled:
           pressureSensitivity ?? prevState.pressureSensitivityEnabled,
         // предпочтение «выключен» гасит режим пера, «включён» включает его,
@@ -3424,6 +3449,7 @@ class App extends React.Component<AppProps, AppState> {
         currentItemStrokeWidth: s.strokeWidth,
         currentItemOpacity: s.opacity,
         currentItemStrokeColor: s.strokeColor,
+        currentItemStrokeStyle: s.strokeStyle,
       };
     }
 
@@ -4110,7 +4136,8 @@ class App extends React.Component<AppProps, AppState> {
       // Sync property changes back to the active settings set
       prevState.currentItemStrokeWidth !== this.state.currentItemStrokeWidth ||
       prevState.currentItemOpacity !== this.state.currentItemOpacity ||
-      prevState.currentItemStrokeColor !== this.state.currentItemStrokeColor
+      prevState.currentItemStrokeColor !== this.state.currentItemStrokeColor ||
+      prevState.currentItemStrokeStyle !== this.state.currentItemStrokeStyle
     ) {
       // Функция setState из setToolSettings исполняется в очереди пачки и
       // видит инструмент до смены: при записи ключ выводится заново (без
@@ -6478,6 +6505,7 @@ class App extends React.Component<AppProps, AppState> {
       currentItemStrokeWidth: s.strokeWidth,
       currentItemOpacity: s.opacity,
       currentItemStrokeColor: s.strokeColor,
+      currentItemStrokeStyle: s.strokeStyle,
     });
   };
 
@@ -6486,6 +6514,7 @@ class App extends React.Component<AppProps, AppState> {
       strokeWidth: this.state.currentItemStrokeWidth,
       opacity: this.state.currentItemOpacity,
       strokeColor: this.state.currentItemStrokeColor,
+      strokeStyle: this.state.currentItemStrokeStyle,
     };
   };
 

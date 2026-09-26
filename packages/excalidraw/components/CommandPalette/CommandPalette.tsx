@@ -4,6 +4,7 @@ import { useEffect, useRef, useMemo, useState } from "react";
 
 import {
   DEFAULT_SIDEBAR,
+  DEFAULT_SIDEBAR_AVAILABLE,
   EVENT,
   KEYS,
   capitalizeString,
@@ -426,35 +427,41 @@ function CommandPaletteInner({
 
       const additionalCommands: CommandPaletteItem[] = [
         actionToCommand(actionToggleTheme, DEFAULT_CATEGORIES.app),
-        {
-          label: t("toolBar.library"),
-          category: DEFAULT_CATEGORIES.app,
-          icon: LibraryIcon,
-          viewMode: false,
-          perform: () => {
-            if (uiAppState.openSidebar) {
-              setAppState({
-                openSidebar: null,
-              });
-            } else {
-              setAppState({
-                openSidebar: {
-                  name: DEFAULT_SIDEBAR.name,
-                  tab: DEFAULT_SIDEBAR.defaultTab,
+        // sdamex: without the sidebar the library and the search open nothing
+        // (#5069), same as Ctrl+F and "Add to library"
+        ...(DEFAULT_SIDEBAR_AVAILABLE
+          ? [
+              {
+                label: t("toolBar.library"),
+                category: DEFAULT_CATEGORIES.app,
+                icon: LibraryIcon,
+                viewMode: false,
+                perform: () => {
+                  if (uiAppState.openSidebar) {
+                    setAppState({
+                      openSidebar: null,
+                    });
+                  } else {
+                    setAppState({
+                      openSidebar: {
+                        name: DEFAULT_SIDEBAR.name,
+                        tab: DEFAULT_SIDEBAR.defaultTab,
+                      },
+                    });
+                  }
                 },
-              });
-            }
-          },
-        },
-        {
-          label: t("search.title"),
-          category: DEFAULT_CATEGORIES.app,
-          icon: searchIcon,
-          viewMode: true,
-          perform: () => {
-            actionManager.executeAction(actionToggleSearchMenu);
-          },
-        },
+              },
+              {
+                label: t("search.title"),
+                category: DEFAULT_CATEGORIES.app,
+                icon: searchIcon,
+                viewMode: true,
+                perform: () => {
+                  actionManager.executeAction(actionToggleSearchMenu);
+                },
+              },
+            ]
+          : []),
         {
           label: t("labels.shapeSwitch"),
           category: DEFAULT_CATEGORIES.elements,

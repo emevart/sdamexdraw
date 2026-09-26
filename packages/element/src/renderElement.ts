@@ -67,7 +67,12 @@ import {
 import { getContainingFrame } from "./frame";
 import { getCornerRadius } from "./utils";
 
-import { ShapeCache } from "./shape";
+import {
+  ShapeCache,
+  getFreedrawDashArray,
+  getFreedrawDashWidth,
+  isDashedFreedraw,
+} from "./shape";
 
 import type {
   ExcalidrawElement,
@@ -354,11 +359,22 @@ const drawElementOnCanvas = (
 
       for (const shape of shapes) {
         if (typeof shape === "string") {
-          context.fillStyle = applyDarkModeFilter(
+          const color = applyDarkModeFilter(
             element.strokeColor,
             renderConfig.theme === THEME.DARK,
           );
-          context.fill(new Path2D(shape));
+          if (isDashedFreedraw(element)) {
+            // sdamex dashed pen: the shape is the centerline
+            context.strokeStyle = color;
+            context.lineWidth = getFreedrawDashWidth(element);
+            context.lineCap = "round";
+            context.lineJoin = "round";
+            context.setLineDash(getFreedrawDashArray(element));
+            context.stroke(new Path2D(shape));
+          } else {
+            context.fillStyle = color;
+            context.fill(new Path2D(shape));
+          }
         } else {
           rc.draw(shape);
         }

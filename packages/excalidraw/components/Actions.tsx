@@ -40,6 +40,7 @@ import {
   canHaveArrowheads,
   getTargetElements,
   hasBackground,
+  hasSloppiness,
   hasStrokeStyle,
   hasStrokeWidth,
 } from "../scene";
@@ -419,12 +420,15 @@ export const CombinedShapeProperties = ({
               {(hasStrokeStyle(appState.activeTool.type) ||
                 targetElements.some((element) =>
                   hasStrokeStyle(element.type),
-                )) && (
-                <>
-                  {renderAction("changeStrokeStyle")}
-                  {renderAction("changeSloppiness")}
-                </>
-              )}
+                )) &&
+                renderAction("changeStrokeStyle")}
+              {/* sdamex: the pen has a stroke style but no sloppiness, it
+                  would only change the next shapes */}
+              {(hasSloppiness(appState.activeTool.type) ||
+                targetElements.some((element) =>
+                  hasSloppiness(element.type),
+                )) &&
+                renderAction("changeSloppiness")}
               {(canChangeRoundness(appState.activeTool.type) ||
                 targetElements.some((element) =>
                   canChangeRoundness(element.type),

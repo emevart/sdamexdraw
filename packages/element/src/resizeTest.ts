@@ -27,6 +27,7 @@ import { isImageElement, isLinearElement } from "./typeChecks";
 import type {
   TransformHandleType,
   TransformHandle,
+  TransformHandles,
   MaybeTransformHandleType,
 } from "./transformHandles";
 import type {
@@ -45,6 +46,34 @@ const isInsideTransformHandle = (
   x <= transformHandle[0] + transformHandle[2] &&
   y >= transformHandle[1] &&
   y <= transformHandle[1] + transformHandle[3];
+
+// sdamex: where hit zones overlap, the handle with the nearest center wins.
+// A finger zone is 28 px and the rotation handle sits 16 px above the middle
+// top handle, so upstream (rotation checked first) rotated when a finger landed
+// a little above that handle; tablets draw the middle handles since 0.30.6.
+// Mouse and pen zones do not overlap, and on an exact tie the first handle in
+// the given order wins as before.
+const getNearestTransformHandleAt = (
+  transformHandles: TransformHandles,
+  x: number,
+  y: number,
+): TransformHandleType | null => {
+  let nearest: TransformHandleType | null = null;
+  let nearestDistance = Infinity;
+  for (const [key, handle] of Object.entries(transformHandles)) {
+    if (!handle || !isInsideTransformHandle(handle, x, y)) {
+      continue;
+    }
+    const dx = x - (handle[0] + handle[2] / 2);
+    const dy = y - (handle[1] + handle[3] / 2);
+    const distance = dx * dx + dy * dy;
+    if (distance < nearestDistance) {
+      nearest = key as TransformHandleType;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+};
 
 export const resizeTest = <Point extends GlobalPoint | LocalPoint>(
   element: NonDeletedExcalidrawElement,
@@ -69,24 +98,14 @@ export const resizeTest = <Point extends GlobalPoint | LocalPoint>(
       getOmitSidesForEditorInterface(editorInterface),
     );
 
-  if (
-    rotationTransformHandle &&
-    isInsideTransformHandle(rotationTransformHandle, x, y)
-  ) {
-    return "rotation" as TransformHandleType;
-  }
-
-  const filter = Object.keys(transformHandles).filter((key) => {
-    const transformHandle =
-      transformHandles[key as Exclude<TransformHandleType, "rotation">]!;
-    if (!transformHandle) {
-      return false;
-    }
-    return isInsideTransformHandle(transformHandle, x, y);
-  });
-
-  if (filter.length > 0) {
-    return filter[0] as TransformHandleType;
+  // rotation first, as upstream, for an exact tie
+  const hit = getNearestTransformHandleAt(
+    { rotation: rotationTransformHandle, ...transformHandles },
+    x,
+    y,
+  );
+  if (hit) {
+    return hit;
   }
 
   if (canResizeFromSides(editorInterface)) {
@@ -173,17 +192,14 @@ export const getTransformHandleTypeFromCoords = <
     getOmitSidesForEditorInterface(editorInterface),
   );
 
-  const found = Object.keys(transformHandles).find((key) => {
-    const transformHandle =
-      transformHandles[key as Exclude<TransformHandleType, "rotation">]!;
-    return (
-      transformHandle &&
-      isInsideTransformHandle(transformHandle, scenePointerX, scenePointerY)
-    );
-  });
+  const found = getNearestTransformHandleAt(
+    transformHandles,
+    scenePointerX,
+    scenePointerY,
+  );
 
   if (found) {
-    return found as MaybeTransformHandleType;
+    return found;
   }
 
   if (canResizeFromSides(editorInterface)) {

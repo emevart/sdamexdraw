@@ -13,6 +13,8 @@ Please add the latest change on the top under the correct section.
 
 ## 0.30.9 (2026-10-01)
 
+[PR #21](https://github.com/emevart/sdamexdraw/pull/21).
+
 ### Fixes
 
 - Свободное рисование сохраняет промежуточные mouse/pen samples между кадрами, включая coalesced events и давление. Начало штриха больше не теряет точки из-за RAF-throttle; события другого указателя не попадают в активный штрих. Завершение и отмена очищают буфер.

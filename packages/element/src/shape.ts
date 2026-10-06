@@ -1300,7 +1300,8 @@ export const getFreedrawStrokeRadius = (
 // The solid ink is a filled outline whose width follows the pen pressure; a
 // dash pattern cannot follow a filled outline. A dashed or dotted stroke is
 // drawn instead as its centerline, stroked with an even width: the width of
-// the solid ink at medium pressure, so switching the style keeps the weight.
+// the solid mouse ink, so switching the style keeps the weight of a mouse
+// stroke and roughly of an average pen stroke (#5706).
 
 /**
  * Width factor of the ink of a stroke without pressure (the mouse), and of
@@ -1598,15 +1599,40 @@ const findCorners = (
   return corners;
 };
 
-/** The point before `a` on a parabola through a, b, c (a line without c). */
+/**
+ * A point one segment back from the end `a` of a section (b, c follow it),
+ * along the tangent of the parabola through a, b, c parametrized by chord
+ * length, so uneven spacing does not bend it. A straight continuation
+ * without c, or when the tangent turns away from b.
+ */
 const extrapolate = (
   a: FreedrawSample,
   b: FreedrawSample,
   c: FreedrawSample | undefined,
-): FreedrawSample =>
-  c
-    ? [3 * a[0] - 3 * b[0] + c[0], 3 * a[1] - 3 * b[1] + c[1], a[2]]
-    : [2 * a[0] - b[0], 2 * a[1] - b[1], a[2]];
+): FreedrawSample => {
+  const h1 = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const straight: FreedrawSample = [2 * a[0] - b[0], 2 * a[1] - b[1], a[2]];
+  if (!c) {
+    return straight;
+  }
+  const h2 = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const total = h1 + h2;
+  // derivative at a of the Lagrange parabola on the nodes 0, h1, h1 + h2
+  const ka = -(h1 + total) / (h1 * total);
+  const kb = total / (h1 * h2);
+  const kc = -h1 / (total * h2);
+  const tx = ka * a[0] + kb * b[0] + kc * c[0];
+  const ty = ka * a[1] + kb * b[1] + kc * c[1];
+  const length = Math.hypot(tx, ty);
+  if (
+    !Number.isFinite(length) ||
+    length === 0 ||
+    tx * (b[0] - a[0]) + ty * (b[1] - a[1]) <= 0
+  ) {
+    return straight;
+  }
+  return [a[0] - (tx / length) * h1, a[1] - (ty / length) * h1, a[2]];
+};
 
 /** Biweight kernel: a smooth bell on [-1, 1] without Math.exp. */
 const biweight = (u: number) => {
@@ -1643,7 +1669,7 @@ const pushSmoothedSection = (
       p1,
       p2,
       p3,
-      Math.min(64, Math.ceil(length / step)),
+      Math.min(256, Math.ceil(length / step)),
     );
   }
 

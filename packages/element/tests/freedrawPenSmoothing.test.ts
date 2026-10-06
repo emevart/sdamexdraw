@@ -268,23 +268,92 @@ describe("pen ink along a smoothed centerline (sdamex #5706)", () => {
     expect(apexDistance).toBeLessThan(1.5);
   });
 
+  // the curve between sparse samples bulges past the extreme samples: here
+  // every 30 degrees of a circle, none on its top, bottom, left or right
   it("the ink stays inside the bounds of the recorded points", () => {
-    const { points, pressures } = record(
-      (t) => [50 + 40 * Math.cos(40 * t), 50 + 40 * Math.sin(40 * t)],
-      () => 0.6,
-      0.3,
-      60,
-      false,
+    const R = 60;
+    const points: LocalPoint[] = [];
+    for (let deg = 15; deg <= 15 + 360; deg += 30) {
+      const a = (deg * Math.PI) / 180;
+      points.push([R * Math.cos(a), R * Math.sin(a)] as LocalPoint);
+    }
+    const element = freedraw(
+      points,
+      points.map(() => 0.25),
     );
-    const element = freedraw(points, pressures);
     const pad = getFreedrawStrokeRadius(element) + 1e-6;
     const xs = points.map(([x]) => x);
     const ys = points.map(([, y]) => y);
-    for (const [x, y] of getFreedrawOutlinePoints(element)) {
+    const outline = getFreedrawOutlinePoints(element);
+    for (const [x, y] of outline) {
       expect(x).toBeGreaterThanOrEqual(Math.min(...xs) - pad);
       expect(x).toBeLessThanOrEqual(Math.max(...xs) + pad);
       expect(y).toBeGreaterThanOrEqual(Math.min(...ys) - pad);
       expect(y).toBeLessThanOrEqual(Math.max(...ys) + pad);
+    }
+    // and the loop is still round: the ink reaches out to the bounds
+    expect(Math.max(...outline.map(([, y]) => y))).toBeGreaterThan(
+      Math.max(...ys) + pad - 1,
+    );
+  });
+
+  it("degenerate strokes give a finite outline", () => {
+    const cases: Array<[LocalPoint[], number[]]> = [
+      [[[0, 0]] as LocalPoint[], [0.3]],
+      // a tap: the editor moves the pointerup point by 0.0001
+      [
+        [
+          [0, 0],
+          [0.0001, 0.0001],
+        ] as LocalPoint[],
+        [0.3, 0],
+      ],
+      [
+        [
+          [0, 0],
+          [0, 0],
+          [0, 0],
+        ] as LocalPoint[],
+        [0.3, 0.3, 0],
+      ],
+      // shorter than a step
+      [
+        [
+          [0, 0],
+          [0.3, 0],
+          [0.6, 0.1],
+        ] as LocalPoint[],
+        [0.2, 0.2, 0],
+      ],
+      // two corners close together, fewer pressures than points
+      [
+        [
+          [0, 0],
+          [10, 0],
+          [10, 3],
+          [0, 3],
+          [0, 6],
+          [10, 6],
+        ] as LocalPoint[],
+        [0.2, 0.3],
+      ],
+      // a long fast flick between two samples
+      [
+        [
+          [0, 0],
+          [400, 30],
+          [420, 30],
+        ] as LocalPoint[],
+        [0.2, 0.2, 0],
+      ],
+    ];
+    for (const [points, pressures] of cases) {
+      const element = freedraw(points, pressures);
+      const outline = getFreedrawOutlinePoints(element);
+      expect(outline.length).toBeGreaterThan(0);
+      for (const point of [...outline, ...getFreedrawCenterline(element)]) {
+        expect(point.every((value) => Number.isFinite(value))).toBe(true);
+      }
     }
   });
 });

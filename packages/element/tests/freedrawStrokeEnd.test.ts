@@ -2,6 +2,7 @@ import type { LocalPoint, Radians } from "@excalidraw/math";
 
 import {
   getFreedrawOutlinePoints,
+  getFreedrawPenWidth,
   getFreedrawStrokeRadius,
 } from "../src/shape";
 
@@ -74,18 +75,26 @@ describe("freedraw stroke end (sdamex #3043)", () => {
     expect(minX).toBeGreaterThanOrEqual(-getFreedrawStrokeRadius(element));
   });
 
+  // #5706: the smoothing no longer lags (no streamline), so a sparse sample
+  // is not pulled inward any more; noise between samples is smoothed instead
+  // (freedrawPenSmoothing.test.ts). A gentle bend stays round, not a corner
   it("still smooths interior points", () => {
     const element = freedraw([
       [0, 0],
-      [100, 100],
+      [100, 20],
       [200, 0],
       [300, 0],
     ] as LocalPoint[]);
-    const maxY = Math.max(
-      ...getFreedrawOutlinePoints(element).map(([, y]) => y),
-    );
+    const outline = getFreedrawOutlinePoints(element);
+    const maxY = Math.max(...outline.map(([, y]) => y));
 
-    expect(maxY).toBeLessThan(100);
+    expect(maxY).toBeLessThanOrEqual(20 + getFreedrawStrokeRadius(element));
+    // a round bend: the top of the ink is wide, not a single sharp vertex
+    const nearTop = outline.filter(([, y]) => y > maxY - 0.5);
+    expect(
+      Math.max(...nearTop.map(([x]) => x)) -
+        Math.min(...nearTop.map(([x]) => x)),
+    ).toBeGreaterThan(4);
   });
 
   // live drawing re-renders the outline from all points on every pointermove,
@@ -114,11 +123,9 @@ describe("freedraw stroke end (sdamex #3043)", () => {
     }
   });
 
-  // a pen reports pointerup with pressure 0: the tail keeps its raw position
-  // but gets the pressure the library would have smoothed. The end cap of a
-  // longer stroke takes the penultimate pressure, so the tail pressure shows
-  // on a two-point stroke
-  it("the tail of a pen stroke keeps the smoothed pressure", () => {
+  // a pen reports pointerup with pressure 0: the end takes the last real
+  // pressure instead (#5706), so the stroke does not thin out at its tip
+  it("the tail of a pen stroke keeps the last real pressure", () => {
     const element: ExcalidrawFreeDrawElement = {
       ...freedraw([
         [0, 0],
@@ -127,21 +134,16 @@ describe("freedraw stroke end (sdamex #3043)", () => {
       simulatePressure: false,
       pressures: [0.5, 0],
     };
-    // ink radius for a pressure: easeOutSine with thinning 0.6, as in
-    // getFreedrawOutlinePoints
-    const radius = (pressure: number) =>
-      getFreedrawStrokeRadius(element) *
-      (1 - 0.6 * (1 - Math.sin((pressure * Math.PI) / 2)));
     const tipRadius = Math.max(
       ...getFreedrawOutlinePoints(element)
         .filter(([x]) => x > 100)
         .map(([x, y]) => Math.hypot(x - 100, y)),
     );
 
-    // soft start blends the raw 0 to 0.5 * 0.8 = 0.4, streamline 0.45
-    // smooths it to 0.5 + (0.4 - 0.5) * 0.55 = 0.445
-    expect(tipRadius).toBeCloseTo(radius(0.445), 6);
-    expect(tipRadius).not.toBeCloseTo(radius(0.4), 2);
+    expect(tipRadius).toBeCloseTo(
+      getFreedrawStrokeRadius(element) * getFreedrawPenWidth(0.5),
+      6,
+    );
     expect(Math.max(...xs(element))).toBeGreaterThanOrEqual(100 - 0.01);
   });
 });

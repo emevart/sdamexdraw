@@ -1300,9 +1300,13 @@ export const getFreedrawStrokeRadius = (
 // The solid ink is a filled outline whose width follows the pen pressure; a
 // dash pattern cannot follow a filled outline. A dashed or dotted stroke is
 // drawn instead as its centerline, stroked with an even width: the width of
-// the solid ink at medium pressure, so switching the style keeps the weight.
+// the solid mouse ink, so switching the style keeps the weight of a mouse
+// stroke and roughly of an average pen stroke (#5706).
 
-/** Width factor of the ink at medium pressure (see `sizeMapping` below). */
+/**
+ * Width factor of the ink of a stroke without pressure (the mouse), and of
+ * pressure 0.5 before #5706.
+ */
 const MEDIUM_PRESSURE_WIDTH = 1 - 0.6 * (1 - Math.sin(Math.PI / 4));
 
 export const isDashedFreedraw = (element: ExcalidrawElement) =>
@@ -1379,6 +1383,423 @@ export const getFreeDrawCenterlineSvgPath = (
   return d.join(" ") as SVGPathString;
 };
 
+// -----------------------------------------------------------------------------
+// sdamex #5706: pen centerline and width
+// -----------------------------------------------------------------------------
+//
+// The ink is built along a smoothed, dense copy of the recorded points; the
+// element keeps the recorded points as they are.
+//
+// 1. A sample closer than a step to the previous kept one is dropped. An
+//    Apple Pencil gives up to 240 samples a second, and Safari before 26.2
+//    rounds pointer coordinates to whole pixels: slow handwriting came as a
+//    staircase of 1 px steps, and the outline followed every step.
+// 2. A centripetal Catmull-Rom curve goes through the kept samples: a fast
+//    loop recorded at 60 samples a second stays round instead of a polygon.
+// 3. A bell along the arc length smooths the positions symmetrically, so the
+//    line does not lag behind the pen. Its window shrinks toward the ends: the
+//    ink starts at the pointerdown point and ends at the pointerup point
+//    without a straight tail. Widths are smoothed with the full window.
+//
+// The smoothing does not cross a sharp corner, so letters keep their angles,
+// and the line stays inside the box of the recorded points (bounds). Up to
+// 0.30.9 LaserPointer smoothed the raw points itself with streamline 0.45: the
+// line lagged behind the pen, fast loops shrank, and the raw last point
+// (#3043) closed the gap with a straight "tangent" tail.
+
+/** Smallest ink radius, scene px. */
+const FREEDRAW_MIN_RADIUS = 0.5;
+/** Smallest start cap radius: under 1 px LaserPointer draws a spike. */
+const FREEDRAW_START_MIN_RADIUS = 1.1;
+
+/** Width factor of a pen stroke at zero pressure. */
+const PEN_MIN_WIDTH = 0.3;
+/**
+ * Pen pressure of the full width. Safari reports the Apple Pencil force
+ * divided by its maximum (about 4.17): an average hand writes at about 0.25.
+ */
+const PEN_FULL_PRESSURE = 0.6;
+
+/**
+ * Ink width (a factor of the stroke radius) for a pen pressure. Up to 0.30.9
+ * it was 0.4 + 0.6 * easeOutSine(p) with a 1.1 px floor: with the default thin
+ * pen the whole working range of an Apple Pencil (0.05–0.3) gave almost one
+ * width.
+ */
+export const getFreedrawPenWidth = (pressure: number) =>
+  PEN_MIN_WIDTH +
+  (1 - PEN_MIN_WIDTH) *
+    Math.sin(
+      (Math.min(1, Math.max(0, pressure) / PEN_FULL_PRESSURE) * Math.PI) / 2,
+    );
+
+/** Pressures of the first samples the start of a pen stroke is blended to. */
+const SOFT_START_POINTS = 5;
+const SOFT_START_REFERENCE_POINTS = 8;
+
+/**
+ * Width factor of every point, or one number for a stroke of even width:
+ * the mouse (simulated pressure), a collaborator preview without pressures
+ * (medium width, as before), a finger without force (iOS reports 0; the
+ * floor width it always had).
+ */
+const getFreedrawWidths = (
+  element: ExcalidrawFreeDrawElement,
+  size: number,
+): number[] | number => {
+  const { points, pressures } = element;
+  if (element.simulatePressure || !pressures.length) {
+    return MEDIUM_PRESSURE_WIDTH;
+  }
+  const lastPressure = pressures[pressures.length - 1];
+  const known = points.map((_, i) => pressures[i] ?? lastPressure);
+  const firstPressed = known.findIndex((pressure) => pressure > 0);
+  if (firstPressed < 0) {
+    return Math.max(1 - 0.6, FREEDRAW_START_MIN_RADIUS / size);
+  }
+  // a pen reports pointerup with pressure 0, and sometimes pointerdown: the
+  // ends take the nearest real pressure
+  for (let i = 0; i < firstPressed; i++) {
+    known[i] = known[firstPressed];
+  }
+  for (let i = 1; i < known.length; i++) {
+    if (known[i] <= 0) {
+      known[i] = known[i - 1];
+    }
+  }
+  // soft start: an Apple Pencil lands with an irregular, often very low
+  // force; the first samples lean to the pressure the stroke settles at
+  const reference = known.slice(1, 1 + SOFT_START_REFERENCE_POINTS);
+  const settled = reference.length
+    ? reference.reduce((sum, pressure) => sum + pressure, 0) / reference.length
+    : known[0];
+  return known.map((pressure, i) => {
+    const blend = i < SOFT_START_POINTS ? i / SOFT_START_POINTS : 1;
+    return getFreedrawPenWidth(settled * (1 - blend) + pressure * blend);
+  });
+};
+
+type FreedrawSample = [x: number, y: number, width: number];
+
+/**
+ * Appends the centripetal Catmull-Rom segment p1 -> p2 (without p1) in
+ * `count` pieces; the width goes linearly.
+ */
+const pushCatmullRomSegment = (
+  out: FreedrawSample[],
+  p0: FreedrawSample,
+  p1: FreedrawSample,
+  p2: FreedrawSample,
+  p3: FreedrawSample,
+  count: number,
+) => {
+  if (count <= 1) {
+    out.push(p2);
+    return;
+  }
+  const d1 = Math.sqrt(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]));
+  const d0 = Math.sqrt(Math.hypot(p1[0] - p0[0], p1[1] - p0[1])) || d1;
+  const d2 = Math.sqrt(Math.hypot(p3[0] - p2[0], p3[1] - p2[1])) || d1;
+  const tangent = (axis: 0 | 1) => {
+    const m1 =
+      ((p1[axis] - p0[axis]) / d0 -
+        (p2[axis] - p0[axis]) / (d0 + d1) +
+        (p2[axis] - p1[axis]) / d1) *
+      d1;
+    const m2 =
+      ((p2[axis] - p1[axis]) / d1 -
+        (p3[axis] - p1[axis]) / (d1 + d2) +
+        (p3[axis] - p2[axis]) / d2) *
+      d1;
+    return [m1, m2];
+  };
+  const [mx1, mx2] = tangent(0);
+  const [my1, my2] = tangent(1);
+  for (let k = 1; k <= count; k++) {
+    const u = k / count;
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1;
+    const h10 = u3 - 2 * u2 + u;
+    const h01 = -2 * u3 + 3 * u2;
+    const h11 = u3 - u2;
+    out.push([
+      h00 * p1[0] + h10 * mx1 + h01 * p2[0] + h11 * mx2,
+      h00 * p1[1] + h10 * my1 + h01 * p2[1] + h11 * my2,
+      p1[2] + (p2[2] - p1[2]) * u,
+    ]);
+  }
+};
+
+/** Arc length from the first sample to each sample. */
+const getArcLengths = (samples: readonly FreedrawSample[]) => {
+  const arc = new Array<number>(samples.length);
+  arc[0] = 0;
+  for (let i = 1; i < samples.length; i++) {
+    arc[i] =
+      arc[i - 1] +
+      Math.hypot(
+        samples[i][0] - samples[i - 1][0],
+        samples[i][1] - samples[i - 1][1],
+      );
+  }
+  return arc;
+};
+
+/** A turn sharper than this over `reach` px on both sides is a corner. */
+const CORNER_TURN = (60 * Math.PI) / 180;
+
+/**
+ * Corners of the kept samples: the sharpest turn of a stretch where the line
+ * turns by CORNER_TURN or more between the points `reach` px back and ahead.
+ * The smoothing does not cross a corner, so a "V" or an "N" keeps its apex.
+ */
+const findCorners = (
+  kept: readonly FreedrawSample[],
+  arc: readonly number[],
+  reach: number,
+): number[] => {
+  const count = kept.length;
+  const turns = new Array<number>(count).fill(0);
+  let back = 0;
+  let ahead = 0;
+  for (let i = 0; i < count; i++) {
+    while (back + 1 < i && arc[i] - arc[back + 1] >= reach) {
+      back++;
+    }
+    ahead = Math.max(ahead, i);
+    while (ahead < count && arc[ahead] - arc[i] < reach) {
+      ahead++;
+    }
+    if (arc[i] - arc[back] < reach || ahead >= count) {
+      continue;
+    }
+    const ax = kept[i][0] - kept[back][0];
+    const ay = kept[i][1] - kept[back][1];
+    const bx = kept[ahead][0] - kept[i][0];
+    const by = kept[ahead][1] - kept[i][1];
+    turns[i] = Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by));
+  }
+  const corners: number[] = [];
+  for (let i = 0; i < count; i++) {
+    if (turns[i] < CORNER_TURN) {
+      continue;
+    }
+    let isPeak = true;
+    for (let j = i - 1; isPeak && j >= 0 && arc[i] - arc[j] <= reach; j--) {
+      isPeak = turns[j] < turns[i];
+    }
+    for (let j = i + 1; isPeak && j < count && arc[j] - arc[i] <= reach; j++) {
+      isPeak = turns[j] <= turns[i];
+    }
+    if (isPeak) {
+      corners.push(i);
+    }
+  }
+  return corners;
+};
+
+/**
+ * A point one segment back from the end `a` of a section (b, c follow it),
+ * along the tangent of the parabola through a, b, c parametrized by chord
+ * length, so uneven spacing does not bend it. A straight continuation
+ * without c, or when the tangent turns away from b.
+ */
+const extrapolate = (
+  a: FreedrawSample,
+  b: FreedrawSample,
+  c: FreedrawSample | undefined,
+): FreedrawSample => {
+  const h1 = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const straight: FreedrawSample = [2 * a[0] - b[0], 2 * a[1] - b[1], a[2]];
+  if (!c) {
+    return straight;
+  }
+  const h2 = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const total = h1 + h2;
+  // derivative at a of the Lagrange parabola on the nodes 0, h1, h1 + h2
+  const ka = -(h1 + total) / (h1 * total);
+  const kb = total / (h1 * h2);
+  const kc = -h1 / (total * h2);
+  const tx = ka * a[0] + kb * b[0] + kc * c[0];
+  const ty = ka * a[1] + kb * b[1] + kc * c[1];
+  const length = Math.hypot(tx, ty);
+  if (
+    !Number.isFinite(length) ||
+    length === 0 ||
+    tx * (b[0] - a[0]) + ty * (b[1] - a[1]) <= 0
+  ) {
+    return straight;
+  }
+  return [a[0] - (tx / length) * h1, a[1] - (ty / length) * h1, a[2]];
+};
+
+/** Biweight kernel: a smooth bell on [-1, 1] without Math.exp. */
+const biweight = (u: number) => {
+  const v = 1 - u * u;
+  return v > 0 ? v * v : 0;
+};
+
+/**
+ * Appends a section of kept samples (from a stroke end or a corner to the
+ * next one) to `out`: a Catmull-Rom curve through them, smoothed along the
+ * arc by a bell `reach` px wide each way and taken `outStep` apart. The ends
+ * of the section stay where they are; `out` already holds its first sample,
+ * unless empty.
+ */
+const pushSmoothedSection = (
+  out: FreedrawSample[],
+  kept: readonly FreedrawSample[],
+  step: number,
+  reach: number,
+  outStep: number,
+) => {
+  const dense: FreedrawSample[] = [kept[0]];
+  for (let i = 0; i < kept.length - 1; i++) {
+    const p1 = kept[i];
+    const p2 = kept[i + 1];
+    // past an end of the section, a point extrapolated along the bend of the
+    // last three samples: a sparse fast stroke does not start or end straight
+    const p0: FreedrawSample = kept[i - 1] ?? extrapolate(p1, p2, kept[i + 2]);
+    const p3: FreedrawSample = kept[i + 2] ?? extrapolate(p2, p1, kept[i - 1]);
+    const length = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+    pushCatmullRomSegment(
+      dense,
+      p0,
+      p1,
+      p2,
+      p3,
+      Math.min(256, Math.ceil(length / step)),
+    );
+  }
+
+  const arc = getArcLengths(dense);
+  const total = arc[arc.length - 1];
+  const count = Math.max(1, Math.round(total / outStep));
+  let from = 0;
+  for (let k = out.length ? 1 : 0; k <= count; k++) {
+    const at = (total * k) / count;
+    // positions: a symmetric window that shrinks to nothing at the ends
+    const positionReach = Math.min(reach, at, total - at);
+    while (from < dense.length - 1 && arc[from] < at - reach) {
+      from++;
+    }
+    let x = 0;
+    let y = 0;
+    let positionWeights = 0;
+    let width = 0;
+    let widthWeights = 0;
+    for (let j = from; j < dense.length && arc[j] <= at + reach; j++) {
+      const distance = arc[j] - at;
+      const widthWeight = biweight(distance / reach);
+      width += dense[j][2] * widthWeight;
+      widthWeights += widthWeight;
+      const weight = positionReach > 0 ? biweight(distance / positionReach) : 0;
+      if (weight > 0) {
+        x += dense[j][0] * weight;
+        y += dense[j][1] * weight;
+        positionWeights += weight;
+      }
+    }
+    width = widthWeights > 0 ? width / widthWeights : dense[0][2];
+    if (k === 0) {
+      out.push([dense[0][0], dense[0][1], width]);
+    } else if (k === count) {
+      const end = dense[dense.length - 1];
+      out.push([end[0], end[1], width]);
+    } else if (positionWeights > 0) {
+      out.push([x / positionWeights, y / positionWeights, width]);
+    } else {
+      // window narrower than the dense spacing: the curve point itself
+      let j = from;
+      while (j < dense.length - 2 && arc[j + 1] < at) {
+        j++;
+      }
+      const span = arc[j + 1] - arc[j] || 1;
+      const t = Math.min(1, Math.max(0, (at - arc[j]) / span));
+      out.push([
+        dense[j][0] + (dense[j + 1][0] - dense[j][0]) * t,
+        dense[j][1] + (dense[j + 1][1] - dense[j][1]) * t,
+        width,
+      ]);
+    }
+  }
+};
+
+/**
+ * The line the ink of a solid pen stroke is drawn along: [x, y, width factor]
+ * in element coordinates, smoothed. Starts and ends at the recorded ends of
+ * the stroke.
+ */
+export const getFreedrawCenterline = (
+  element: ExcalidrawFreeDrawElement,
+): FreedrawSample[] => {
+  const { points } = element;
+  if (!points.length) {
+    return [];
+  }
+  const size = getFreedrawStrokeRadius(element);
+  const widths = getFreedrawWidths(element, size);
+  const widthAt = (i: number) =>
+    typeof widths === "number" ? widths : widths[i];
+  // scene px, tied to the ink radius: the ink covers that much smoothing
+  const step = Math.min(2.5, Math.max(1, size * 0.6));
+  const reach = Math.min(16, Math.max(5, size * 4));
+  const outStep = Math.min(4, Math.max(1.5, size * 0.9));
+  const cornerReach = Math.min(10, Math.max(4, size * 2));
+
+  // 1. drop samples closer than a step; the last one stays as the end
+  const kept: FreedrawSample[] = [[points[0][0], points[0][1], widthAt(0)]];
+  for (let i = 1; i < points.length; i++) {
+    const [x, y] = points[i];
+    const last = kept[kept.length - 1];
+    const distance = Math.hypot(x - last[0], y - last[1]);
+    if (distance >= step) {
+      kept.push([x, y, widthAt(i)]);
+    } else if (i === points.length - 1 && distance > 0) {
+      if (kept.length > 1) {
+        kept[kept.length - 1] = [x, y, last[2]];
+      } else {
+        kept.push([x, y, widthAt(i)]);
+      }
+    }
+  }
+  if (kept.length < 3) {
+    return kept;
+  }
+
+  // 2, 3. Catmull-Rom and smoothing, section by section between corners
+  const corners = findCorners(kept, getArcLengths(kept), cornerReach);
+  const out: FreedrawSample[] = [];
+  let start = 0;
+  for (const end of [...corners, kept.length - 1]) {
+    pushSmoothedSection(out, kept.slice(start, end + 1), step, reach, outStep);
+    start = end;
+  }
+
+  // between sparse samples the curve can bulge past the extreme recorded
+  // point. Bounds, hit areas and the element canvas are sized from the
+  // recorded points plus the full ink radius, so the ink stays inside them:
+  // the line may go past the box only by what its width leaves of the radius
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  for (const sample of out) {
+    const radius = Math.max(sample[2] * size, FREEDRAW_MIN_RADIUS);
+    const slack = Math.max(0, size - radius);
+    sample[0] = Math.min(maxX + slack, Math.max(minX - slack, sample[0]));
+    sample[1] = Math.min(maxY + slack, Math.max(minY - slack, sample[1]));
+  }
+  return out;
+};
+
 export const getFreedrawOutlinePoints = (
   element: ExcalidrawFreeDrawElement,
 ) => {
@@ -1388,71 +1809,28 @@ export const getFreedrawOutlinePoints = (
 
   // perfect-freehand used size as diameter; LaserPointer uses it as radius
   const size = getFreedrawStrokeRadius(element);
-  // sdamex: shared with the tail pressure mirror below
-  const STREAMLINE = 0.45;
 
+  // sdamex #5706: the centerline comes smoothed and dense, so LaserPointer
+  // gets it without its own streamline: that smoothing lagged behind the pen,
+  // shrank fast loops and, with the raw last point (#3043), drew a straight
+  // "tangent" tail at the end of a fast curve. The third coordinate is the
+  // width factor, not the pressure.
   const lp = new LaserPointer({
     size,
-    streamline: STREAMLINE,
+    streamline: 0,
     simplify: 0,
-    sizeMapping: (details) => {
-      const { pressure } = details;
-      // Pressure-based width (same easing as original perfect-freehand config)
-      const p = element.simulatePressure ? 0.5 : pressure;
-      const eased = Math.sin((p * Math.PI) / 2); // easeOutSine
-      // Apply thinning: map pressure to width range [1-thinning, 1]
-      const thinning = 0.6;
-      const width = 1 - thinning * (1 - eased);
-      // Ensure minimum size so LaserPointer generates a proper start cap
-      // (LaserPointer uses a single point when size < 1, causing a spike)
-      return Math.max(width, 1.1 / size);
-    },
+    // LaserPointer draws a pointed start (a spike) when the start cap radius
+    // is under 1 px, so only the first point keeps the old 1.1 px floor
+    sizeMapping: ({ pressure: width, currentIndex }) =>
+      Math.max(
+        width,
+        (currentIndex === 0 ? FREEDRAW_START_MIN_RADIUS : FREEDRAW_MIN_RADIUS) /
+          size,
+      ),
   });
 
-  // Soft-start: blend first few pressure values toward 0.5 (medium width)
-  // to avoid "dry pen" artifacts from irregular initial stylus pressure
-  // on iPad (Apple Pencil reports very low pressure on first contact).
-  const SOFT_START_POINTS = 5;
-
-  // sdamex: the last distinct point goes in unsmoothed so the ink ends at the
-  // pointerup position. With streamline 0.45 and sparse samples (fast strokes)
-  // the smoothed tail stopped up to ~30% short of the real end while bounds
-  // and handles use the raw points (#3043). Only the tail position is raw: its
-  // pressure is smoothed like every other point (a pen reports pointerup with
-  // pressure 0), and the point count must stay the same (see
-  // packages/excalidraw/AGENTS.md gotchas).
-  let tailIndex = element.points.length - 1;
-  while (
-    tailIndex > 0 &&
-    element.points[tailIndex][0] === element.points[tailIndex - 1][0] &&
-    element.points[tailIndex][1] === element.points[tailIndex - 1][1]
-  ) {
-    tailIndex--;
-  }
-
-  // mirror of the pressure LaserPointer smooths with STREAMLINE; the library
-  // skips a point that repeats the previous one, and so does the mirror
-  let smoothedPressure = 0.5;
-  for (let i = 0; i < element.points.length; i++) {
-    const [x, y] = element.points[i];
-    let pressure = element.simulatePressure ? 0.5 : element.pressures[i] ?? 0.5;
-    if (!element.simulatePressure && i < SOFT_START_POINTS) {
-      const blend = i / SOFT_START_POINTS; // 0→1 over first 5 points
-      pressure = 0.5 * (1 - blend) + pressure * blend;
-    }
-    if (i === 0) {
-      smoothedPressure = pressure;
-    } else if (
-      x !== element.points[i - 1][0] ||
-      y !== element.points[i - 1][1]
-    ) {
-      smoothedPressure += (pressure - smoothedPressure) * (1 - STREAMLINE);
-    }
-    if (i === tailIndex) {
-      lp.options.streamline = 0;
-      pressure = smoothedPressure;
-    }
-    lp.addPoint([x, y, pressure] as [number, number, number]);
+  for (const sample of getFreedrawCenterline(element)) {
+    lp.addPoint(sample);
   }
   lp.close();
 

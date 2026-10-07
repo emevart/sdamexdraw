@@ -64,9 +64,7 @@ export const releaseFreedrawLiveInk = () => {
   if (layer) {
     layer.canvas.width = 0;
     layer.canvas.height = 0;
-    layer.owner = null;
-    layer.key = "";
-    layer.drawn = 0;
+    layer = null;
   }
 };
 
@@ -121,6 +119,12 @@ export const renderFreedrawLiveInk = ({
   theme: AppState["theme"];
   opacity: number;
 }) => {
+  // a frame queued (requestAnimationFrame, throttled rendering) for the
+  // canvas of a stroke that has ended: the canvas is gone, and drawing would
+  // build the stroke state and a layer that stay until the next stroke
+  if (context.canvas.isConnected === false) {
+    return;
+  }
   if (!stroke || stroke.element !== element) {
     stroke = {
       element,

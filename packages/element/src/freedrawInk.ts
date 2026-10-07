@@ -1163,6 +1163,9 @@ export const getFreedrawInkSvgPath = (element: ExcalidrawFreeDrawElement) => {
 /** Centerline samples per frozen piece of a stroke being drawn. */
 export const FREEDRAW_LIVE_CHUNK = 64;
 
+/** Consumed points compared on each update to find points moved in place. */
+const CONTINUE_PROBES = 16;
+
 export type FreedrawLiveFrame = {
   /** Outlines of the frozen pieces, oldest first; they never change. */
   chunks: readonly number[][];
@@ -1194,6 +1197,7 @@ export class FreedrawLiveInk {
   private lastX = 0;
   private lastY = 0;
   private lastPressure: number | undefined;
+  private consumed: readonly LocalPoint[] = [];
   private fingerAssumed = false;
   private widths = new PenWidthTracker();
   private bounds: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
@@ -1250,11 +1254,30 @@ export class FreedrawLiveInk {
       return true;
     }
     const last = points[this.seen - 1];
-    return (
-      last[0] === this.lastX &&
-      last[1] === this.lastY &&
-      pressures[this.seen - 1] === this.lastPressure
-    );
+    if (
+      last[0] !== this.lastX ||
+      last[1] !== this.lastY ||
+      pressures[this.seen - 1] !== this.lastPressure
+    ) {
+      return false;
+    }
+    // points moved in place: hold-to-straighten animates every point toward
+    // the line in new tuples, with the count and both ends unchanged. App
+    // appends with a spread, so consumed points keep their tuples; probes
+    // compare by tuple, else by value
+    const consumed = this.consumed;
+    if (consumed !== points) {
+      const seen = this.seen;
+      const stride = Math.max(1, Math.floor(seen / CONTINUE_PROBES));
+      for (let i = 0; i < seen; i += stride) {
+        const now = points[i];
+        const before = consumed[i];
+        if (now !== before && (now[0] !== before[0] || now[1] !== before[1])) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   update(element: ExcalidrawFreeDrawElement): FreedrawLiveFrame {
@@ -1304,6 +1327,7 @@ export class FreedrawLiveInk {
       this.freeze();
     }
     this.seen = count;
+    this.consumed = points;
     if (count) {
       this.lastX = points[count - 1][0];
       this.lastY = points[count - 1][1];

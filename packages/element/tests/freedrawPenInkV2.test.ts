@@ -1,3 +1,5 @@
+import type { LocalPoint } from "@excalidraw/math";
+
 import {
   FREEDRAW_LIVE_CHUNK,
   FreedrawLiveInk,
@@ -266,6 +268,51 @@ describe("pen ink v2: a stroke being drawn", () => {
     expect(frame.restarted).toBe(true);
     expect(frame.chunks.length).toBe(0);
     expect(live.getFrameCenterline().length).toBe(2);
+  });
+
+  it("follows a hold-to-straighten animation: the points move, their count and ends stay", () => {
+    const { samples } = loops(40, 240);
+    const element = toElement(record(samples).slice(0, 400));
+    const live = new FreedrawLiveInk();
+    expect(live.update(element).chunks.length).toBeGreaterThan(2);
+    const count = element.points.length;
+    const [x0, y0] = element.points[0];
+    const [x1, y1] = element.points[count - 1];
+    // App's animateStraighten: each frame, new tuples between the recorded
+    // points and their places on the line; the ends land on themselves
+    for (const eased of [0.05, 0.4, 1]) {
+      const animated = {
+        ...element,
+        points: element.points.map(([x, y], i) => {
+          const t = i / (count - 1);
+          return [
+            x + (x0 + (x1 - x0) * t - x) * eased,
+            y + (y0 + (y1 - y0) * t - y) * eased,
+          ] as LocalPoint;
+        }),
+      };
+      const frame = live.update(animated);
+      expect(frame.restarted).toBe(true);
+      const reference = getFreedrawCenterline(animated);
+      const drawn = live.getFrameCenterline();
+      expect(distanceToPolyline(drawn, reference)).toBeLessThanOrEqual(0.5);
+      expect(distanceToPolyline(reference, drawn)).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it("goes on without a restart while points are only appended", () => {
+    const { samples } = loops(40, 240);
+    const element = toElement(record(samples));
+    const live = new FreedrawLiveInk();
+    for (let count = 2; count <= element.points.length; count += 7) {
+      // App appends with a spread: new arrays, the same tuples
+      const frame = live.update({
+        ...element,
+        points: [...element.points.slice(0, count)],
+        pressures: [...element.pressures.slice(0, count)],
+      });
+      expect(frame.restarted).toBe(false);
+    }
   });
 });
 

@@ -30,17 +30,23 @@ const hasTime = (sample: FreedrawInputSample) =>
  * - With a time of its own on every sample, a sample older than the newest
  *   one accepted from an earlier pointermove is dropped, and so is a sample
  *   of that very time that repeats x, y and pressure of an accepted one.
- * - Without such times (no `timeStamp`, or one time for the whole list), a
- *   sample that repeats x, y and pressure of one of the last REPEAT_MEMORY
- *   accepted samples is dropped. When the list starts with such a repeat, the
- *   re-delivered stretch goes too: up to its last repeat, with the samples
- *   held back between them.
+ * - Without such times (no `timeStamp`, or one time for the whole list),
+ *   only a re-delivered stretch is dropped: the list opens with repeats of x,
+ *   y and pressure of samples among the last REPEAT_MEMORY accepted, with up
+ *   to STRETCH_GAP new (held back) samples between them, and the stretch
+ *   reaches the newest accepted sample: the previous pointermove again. Other
+ *   repeats stay: without times a pen or a mouse (one pressure while the
+ *   button is down) going back over its own pixels looks the same.
  */
 export const createFreedrawSampleFilter = (start?: FreedrawInputSample) => {
   let floor = start && hasTime(start) ? start.timeStamp! : -Infinity;
   const memory = new Float64Array(REPEAT_MEMORY * 3);
   let remembered = 0;
   let next = 0;
+  // the newest accepted sample
+  let newestX = NaN;
+  let newestY = NaN;
+  let newestPressure = NaN;
 
   const remember = (sample: FreedrawInputSample) => {
     memory[next * 3] = sample.clientX;
@@ -48,7 +54,15 @@ export const createFreedrawSampleFilter = (start?: FreedrawInputSample) => {
     memory[next * 3 + 2] = sample.pressure;
     next = (next + 1) % REPEAT_MEMORY;
     remembered = Math.min(REPEAT_MEMORY, remembered + 1);
+    newestX = sample.clientX;
+    newestY = sample.clientY;
+    newestPressure = sample.pressure;
   };
+
+  const isNewest = (sample: FreedrawInputSample) =>
+    sample.clientX === newestX &&
+    sample.clientY === newestY &&
+    sample.pressure === newestPressure;
 
   const isRepeat = (sample: FreedrawInputSample) => {
     for (let i = 0; i < remembered; i++) {
@@ -93,24 +107,24 @@ export const createFreedrawSampleFilter = (start?: FreedrawInputSample) => {
       }
     } else {
       // a re-delivered stretch opens the list: repeats, with up to
-      // STRETCH_GAP new samples between them (held back ones)
+      // STRETCH_GAP new samples between them (held back ones), up to the
+      // newest accepted sample
       let from = 0;
       if (isRepeat(samples[0])) {
         let gap = 0;
         for (let i = 0; i < samples.length && gap <= STRETCH_GAP; i++) {
-          if (isRepeat(samples[i])) {
-            from = i + 1;
-            gap = 0;
-          } else {
+          if (!isRepeat(samples[i])) {
             gap++;
+            continue;
+          }
+          gap = 0;
+          if (isNewest(samples[i])) {
+            from = i + 1;
           }
         }
       }
       for (let i = from; i < samples.length; i++) {
         const sample = samples[i];
-        if (isRepeat(sample)) {
-          continue;
-        }
         accepted.push(sample);
         remember(sample);
         if (hasTime(sample)) {

@@ -192,6 +192,23 @@ describe("re-delivered coalesced samples (sdamex #5706)", () => {
       expect(Math.min(...steps(element))).toBeGreaterThanOrEqual(-3);
     });
 
+    it("without sample times, keeps a mouse going back over its own pixels", () => {
+      const pointer = new Pointer("mouse", 71);
+      pointer.downAt(100, 200);
+      // right along y = 200 and back over the same pixels, one untimed
+      // sample a pointermove; a mouse button presses with 0.5 throughout
+      for (const x of [110, 120, 130, 140, 130, 120, 110]) {
+        dispatchRawMove("mouse", 71, x, 200, 0.5, [
+          { clientX: x, clientY: 200, pressure: 0.5 },
+        ]);
+      }
+      pointer.upAt(110, 200);
+
+      expect(findStroke().points.map(([x]) => x)).toEqual([
+        0, 10, 20, 30, 40, 30, 20, 10, 10,
+      ]);
+    });
+
     it("keeps distinct samples of one coarse time and drops an exact repeat of it", () => {
       const pointer = new Pointer("pen", 72);
       pointer.downAt(100, 200);

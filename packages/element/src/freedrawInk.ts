@@ -577,6 +577,11 @@ class CenterlineStream {
       return;
     }
     const total = da[last];
+    // kept samples are finite (KeptFilter); a sum past the largest number
+    // would never let the loop end
+    if (!Number.isFinite(total)) {
+      return;
+    }
     for (;;) {
       const at = this.outK * outStep;
       if (closed) {
@@ -652,10 +657,17 @@ class CenterlineStream {
   }
 }
 
+const isFinitePoint = (x: number, y: number) =>
+  Number.isFinite(x) && Number.isFinite(y);
+const finiteWidth = (w: number) =>
+  Number.isFinite(w) ? w : MEDIUM_PRESSURE_WIDTH;
+
 /**
  * Drops samples closer than a step to the previous kept one. The last kept
  * sample stays pending: the end of the stroke may replace it (0.30.10 kept
  * the pointerup point as the end and dropped the sample it replaced).
+ * Samples off the number line (NaN, Infinity: damaged data) are skipped, and
+ * a width that is not a number (a NaN pressure) is the medium one.
  */
 class KeptFilter {
   private x = 0;
@@ -666,7 +678,10 @@ class KeptFilter {
   constructor(private stream: CenterlineStream, private step: number) {}
 
   add(x: number, y: number, w: number) {
-    if (this.count && Math.hypot(x - this.x, y - this.y) < this.step) {
+    if (
+      !isFinitePoint(x, y) ||
+      (this.count && Math.hypot(x - this.x, y - this.y) < this.step)
+    ) {
       return;
     }
     if (this.count) {
@@ -674,13 +689,21 @@ class KeptFilter {
     }
     this.x = x;
     this.y = y;
-    this.w = w;
+    this.w = finiteWidth(w);
     this.count++;
   }
 
   /** Pushes the pending sample and the end of the stroke at (x, y). */
   pushEnd(x: number, y: number, w: number) {
     const { stream } = this;
+    if (!isFinitePoint(x, y)) {
+      // the end is damaged: the stroke ends at the pending sample
+      if (this.count) {
+        stream.pushKept(this.x, this.y, this.w);
+      }
+      return;
+    }
+    w = finiteWidth(w);
     if (!this.count) {
       stream.pushKept(x, y, w);
       return;
@@ -710,6 +733,9 @@ const extendBounds = (
 ) => {
   for (let i = from; i < to; i++) {
     const [x, y] = points[i];
+    if (!isFinitePoint(x, y)) {
+      continue;
+    }
     if (x < bounds[0]) {
       bounds[0] = x;
     }

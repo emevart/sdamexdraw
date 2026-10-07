@@ -18,6 +18,7 @@ import {
 import {
   coil,
   distanceToPolyline,
+  freedrawElement,
   record,
   rng,
   sample,
@@ -314,6 +315,94 @@ describe("pen ink v2: a stroke being drawn", () => {
       expect(frame.restarted).toBe(false);
     }
   });
+});
+
+describe("pen ink v2: points that are not finite (damaged data)", () => {
+  const finite = (values: ArrayLike<number>) =>
+    Array.from(values).every((value) => Number.isFinite(value));
+  it.each([
+    [
+      "NaN inside",
+      [
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [NaN, 3],
+        [20, 0],
+        [25, 0],
+      ],
+      null,
+    ],
+    [
+      "Infinity inside",
+      [
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [Infinity, 3],
+        [20, 0],
+        [25, 0],
+      ],
+      null,
+    ],
+    [
+      "NaN first",
+      [
+        [NaN, NaN],
+        [5, 0],
+        [10, 0],
+        [15, 0],
+      ],
+      null,
+    ],
+    [
+      "NaN last",
+      [
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [NaN, NaN],
+      ],
+      null,
+    ],
+    [
+      "NaN pressure",
+      [
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [15, 0],
+        [20, 0],
+      ],
+      2,
+    ],
+  ] as [string, number[][], number | null][])(
+    "%s: the ink skips them and stays finite",
+    (_, points, nanPressureAt) => {
+      const pressures = points.map((__, i) =>
+        i === nanPressureAt ? NaN : 0.2,
+      );
+      const element = freedrawElement(points as LocalPoint[], pressures);
+
+      const centerline = getFreedrawCenterline(element);
+      expect(centerline.length).toBeGreaterThan(1);
+      expect(finite(centerline.flat())).toBe(true);
+      const { outline } = getFreedrawInk(fresh(element));
+      expect(outline.length).toBeGreaterThan(0);
+      expect(finite(outline)).toBe(true);
+
+      const live = new FreedrawLiveInk();
+      for (let count = 1; count <= points.length; count++) {
+        const frame = live.update({
+          ...element,
+          points: element.points.slice(0, count),
+          pressures: element.pressures.slice(0, count),
+        });
+        expect(finite(frame.tail)).toBe(true);
+      }
+      expect(finite(live.getFrameCenterline().flat())).toBe(true);
+    },
+  );
 });
 
 describe("pen ink v2: cost (relative, stable in CI)", () => {

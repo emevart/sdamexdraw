@@ -82,7 +82,6 @@ const _renderNewElementScene = ({
         renderFreedrawLiveInk({
           element: newElement,
           context,
-          rc,
           scale,
           zoom: appState.zoom.value,
           scrollX: appState.scrollX,

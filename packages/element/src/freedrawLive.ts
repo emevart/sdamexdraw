@@ -9,6 +9,8 @@
 // when the zoom, scroll, size or color changes mid-stroke. After pointerup
 // the stroke is drawn from its cached full ink like any other element.
 
+import rough from "roughjs/bin/rough";
+
 import { THEME, applyDarkModeFilter, isTransparent } from "@excalidraw/common";
 
 import type { AppState } from "@excalidraw/excalidraw/types";
@@ -26,6 +28,8 @@ type LiveStroke = {
   paths: Path2D[];
   /** device px box of the pieces in the layer: x1, y1, x2, y2 */
   box: [number, number, number, number];
+  /** rough canvas of the canvas the stroke is drawn on (closed fills) */
+  rough: { target: HTMLCanvasElement; canvas: RoughCanvas } | null;
 };
 
 type Layer = {
@@ -101,7 +105,6 @@ const extendBox = (
 export const renderFreedrawLiveInk = ({
   element,
   context,
-  rc,
   scale,
   zoom,
   scrollX,
@@ -111,7 +114,6 @@ export const renderFreedrawLiveInk = ({
 }: {
   element: ExcalidrawFreeDrawElement;
   context: CanvasRenderingContext2D;
-  rc: RoughCanvas;
   scale: number;
   zoom: number;
   scrollX: number;
@@ -125,6 +127,7 @@ export const renderFreedrawLiveInk = ({
       ink: new FreedrawLiveInk(),
       paths: [],
       box: [Infinity, Infinity, -Infinity, -Infinity],
+      rough: null,
     };
   }
   const live = stroke;
@@ -149,13 +152,17 @@ export const renderFreedrawLiveInk = ({
   context.globalAlpha = 1;
 
   // a closed stroke with a fill: the rough fill under the ink (rare; it is
-  // rebuilt on every frame, as before)
+  // rebuilt on every frame, as before). On this canvas: App's rough canvas
+  // draws on the static scene
   if (!isTransparent(element.backgroundColor)) {
     const background = getFreedrawBackgroundShape(element, theme);
     if (background) {
+      if (live.rough?.target !== target) {
+        live.rough = { target, canvas: rough.canvas(target) };
+      }
       context.save();
       context.translate(offsetX, offsetY);
-      rc.draw(background);
+      live.rough.canvas.draw(background);
       context.restore();
     }
   }

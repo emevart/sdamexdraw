@@ -70,10 +70,15 @@ import { getCornerRadius } from "./utils";
 
 import {
   ShapeCache,
+  getFreedrawBackgroundShape,
   getFreedrawDashArray,
   getFreedrawDashWidth,
+  getFreedrawPenInk,
   isDashedFreedraw,
 } from "./shape";
+import { getFreedrawInkPath2D } from "./freedrawInk";
+
+import type { FreedrawPenInk } from "./shape";
 
 import type {
   ExcalidrawElement,
@@ -149,6 +154,8 @@ export interface ExcalidrawElementWithCanvas {
   canvasOffsetY: number;
   imageCrop: ExcalidrawImageElement["crop"] | null;
   containingFrameOpacity: number;
+  /** sdamex #5706: the pen ink a freedraw canvas was drawn with */
+  freedrawInk?: FreedrawPenInk;
 }
 
 const cappedElementCanvasSize = (
@@ -273,6 +280,7 @@ const generateElementCanvas = (
     containingFrameOpacity:
       getContainingFrame(element, elementsMap)?.opacity || 100,
     imageCrop: isImageElement(element) ? element.crop : null,
+    freedrawInk: isFreeDrawElement(element) ? getFreedrawPenInk() : undefined,
   };
 };
 
@@ -355,6 +363,25 @@ const drawElementOnCanvas = (
     case "freedraw": {
       // Draw directly to canvas
       context.save();
+
+      if (getFreedrawPenInk() === "v2" && !isDashedFreedraw(element)) {
+        // sdamex #5706: pen ink v2 fills a Path2D built from the cached ink,
+        // without building and parsing an SVG string
+        const background = getFreedrawBackgroundShape(
+          element,
+          renderConfig.theme,
+        );
+        if (background) {
+          rc.draw(background);
+        }
+        context.fillStyle = applyDarkModeFilter(
+          element.strokeColor,
+          renderConfig.theme === THEME.DARK,
+        );
+        context.fill(getFreedrawInkPath2D(element));
+        context.restore();
+        break;
+      }
 
       const shapes = ShapeCache.generateElementShape(element, renderConfig);
 
@@ -665,7 +692,10 @@ const generateElementWithCanvas = (
     !prevElementWithCanvas ||
     prevElementWithCanvas.theme !== appState.theme ||
     prevElementWithCanvas.imageCrop !== imageCrop ||
-    prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity;
+    prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity ||
+    // sdamex #5706: another pen ink was set (another editor may have set it)
+    (isFreeDrawElement(element) &&
+      prevElementWithCanvas.freedrawInk !== getFreedrawPenInk());
 
   if (
     prevElementWithCanvas &&

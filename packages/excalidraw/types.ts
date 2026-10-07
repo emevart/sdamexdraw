@@ -787,6 +787,15 @@ export interface ExcalidrawProps {
   showDeprecatedFonts?: boolean;
   renderScrollbars?: boolean;
   /**
+   * sdamex #5706: pen ink algorithm. `legacy` (default) draws as 0.30.9;
+   * `v2` drops re-delivered pointer samples, repairs replayed blocks of
+   * saved strokes, smooths without lag and draws a stroke being drawn
+   * incrementally. Strokes are saved the same way in both. The setting is
+   * shared by every editor and export on the page (`setFreedrawPenInk`),
+   * so all editors of a page should pass the same value.
+   */
+  penInk?: "legacy" | "v2";
+  /**
    * Called before exporting to a file.
    *
    * Allows the host app to intercept and delay saving until async operations

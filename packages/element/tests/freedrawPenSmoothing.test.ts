@@ -1,10 +1,10 @@
 import type { LocalPoint, Radians } from "@excalidraw/math";
 
+import { getFreedrawCenterline, getFreedrawPenWidth } from "../src/freedrawInk";
 import {
-  getFreedrawCenterline,
   getFreedrawOutlinePoints,
-  getFreedrawPenWidth,
   getFreedrawStrokeRadius,
+  setFreedrawPenInk,
 } from "../src/shape";
 
 import type { ExcalidrawFreeDrawElement } from "../src/types";
@@ -12,6 +12,7 @@ import type { ExcalidrawFreeDrawElement } from "../src/types";
 // Synthetic Apple Pencil strokes recorded the way the editor records them
 // (emevart/billion-dollars#5706): points relative to the pointerdown point,
 // identical neighbours skipped, the pointerup point repeated with pressure 0.
+// The tests of 0.30.10; its centerline is the centerline of pen ink v2.
 
 type Sample = [x: number, y: number, pressure: number];
 
@@ -105,7 +106,14 @@ const halfWidthAt = (outline: [number, number][], x: number) => {
   return (bottom - top) / 2;
 };
 
-describe("pen ink along a smoothed centerline (sdamex #5706)", () => {
+describe("pen ink v2 along a smoothed centerline (sdamex #5706)", () => {
+  beforeAll(() => {
+    setFreedrawPenInk("v2");
+  });
+  afterAll(() => {
+    setFreedrawPenInk("legacy");
+  });
+
   // very fast circles, 60 samples a second, lifted mid-turn: the old
   // streamline smoothing lagged inside the circle, and the raw last point
   // (#3043) closed the gap with a straight "tangent" tail

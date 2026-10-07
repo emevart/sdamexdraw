@@ -218,6 +218,8 @@ import {
   getApproxMinLineHeight,
   getMinTextElementWidth,
   ShapeCache,
+  getFreedrawPenInk,
+  setFreedrawPenInk,
   getRenderOpacity,
   editGroupForSelectedElement,
   getElementsInGroup,
@@ -465,6 +467,7 @@ import { isOverScrollBars } from "../scene/scrollbars";
 import { isMaybeMermaidDefinition } from "../mermaid";
 import { LassoTrail } from "../lasso";
 import { EraserTrail } from "../eraser";
+import { createFreedrawSampleFilter } from "../freedrawSampleFilter";
 import { getShortcutKey } from "../shortcut";
 import { tryParseSpreadsheet } from "../charts";
 import { AnimationController } from "../renderer/animation";
@@ -3605,6 +3608,7 @@ class App extends React.Component<AppProps, AppState> {
   public async componentDidMount() {
     this.unmounted = false;
     this.api = this.createExcalidrawAPI();
+    this.applyPenInk();
 
     this.excalidrawContainerValue.container =
       this.excalidrawContainerRef.current;
@@ -3747,6 +3751,23 @@ class App extends React.Component<AppProps, AppState> {
     selectGroupsForSelectedElements.clearCache();
     touchTimeout = 0;
     document.documentElement.style.overscrollBehaviorX = "";
+  }
+
+  /**
+   * sdamex #5706: the pen ink algorithm of the page follows the `penInk`
+   * prop (the host flag may arrive after mount). A change drops the cached
+   * shapes, and the canvases of pen strokes, and repaints the scene.
+   */
+  private applyPenInk() {
+    if (!setFreedrawPenInk(this.props.penInk)) {
+      return;
+    }
+    for (const element of this.scene.getElementsIncludingDeleted()) {
+      if (isFreeDrawElement(element)) {
+        ShapeCache.delete(element);
+      }
+    }
+    this.scene.triggerUpdate();
   }
 
   private onResize = withBatchedUpdates(() => {
@@ -3905,6 +3926,9 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   componentDidUpdate(prevProps: AppProps, prevState: AppState) {
+    if (prevProps.penInk !== this.props.penInk) {
+      this.applyPenInk();
+    }
     // must be updated *before* state change listeners are triggered below
     if (!this._initialized && !this.state.isLoading) {
       this._initialized = true;
@@ -11636,6 +11660,20 @@ class App extends React.Component<AppProps, AppState> {
       pressure: number;
     }> = [];
     const drawingPointerId = this.lastPointerDownEvent?.pointerId;
+    // sdamex #5706: pen ink v2 drops samples Safari delivers again (WebKit
+    // #316105) within this touch; legacy keeps every sample, as 0.30.9
+    const isPenInkV2 = getFreedrawPenInk() === "v2";
+    const pointerDownEvent = this.lastPointerDownEvent?.nativeEvent;
+    const filterFreedrawSamples = isPenInkV2
+      ? createFreedrawSampleFilter(
+          pointerDownEvent && {
+            clientX: pointerDownEvent.clientX,
+            clientY: pointerDownEvent.clientY,
+            pressure: pointerDownEvent.pressure,
+            timeStamp: pointerDownEvent.timeStamp,
+          },
+        )
+      : null;
 
     const handlePointerMove = (event: PointerEvent) => {
       if (this.state.openDialog?.name === "elementLinkSelector") {
@@ -12461,8 +12499,10 @@ class App extends React.Component<AppProps, AppState> {
           }
 
           const buffered = pendingFreedrawPoints.splice(0);
+          // v2: only what passed the sample filter; the event position may be
+          // a re-delivered one
           const samples =
-            buffered.length > 0
+            buffered.length > 0 || isPenInkV2
               ? buffered
               : [
                   {
@@ -12729,11 +12769,14 @@ class App extends React.Component<AppProps, AppState> {
       if (this.state.activeTool.type === "freedraw") {
         const coalesced = event.getCoalescedEvents?.() ?? [];
         const lastCoalesced = coalesced[coalesced.length - 1];
-        const samples =
+        const received =
           lastCoalesced?.clientX === event.clientX &&
           lastCoalesced?.clientY === event.clientY
             ? coalesced
             : [...coalesced, event];
+        const samples = filterFreedrawSamples
+          ? filterFreedrawSamples(received)
+          : received;
         for (const sample of samples) {
           const coords = viewportCoordsToSceneCoords(sample, this.state);
           pendingFreedrawPoints.push({

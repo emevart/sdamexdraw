@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 
+import { releaseFreedrawLiveInk } from "@excalidraw/element";
+
 import type { NonDeletedSceneElementsMap } from "@excalidraw/element/types";
 
 import { isRenderThrottlingEnabled } from "../../reactUtils";
@@ -24,6 +26,9 @@ interface NewElementCanvasProps {
 
 const NewElementCanvas = (props: NewElementCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // sdamex #5706: the canvas goes away when the stroke ends; so does the
+  // layer of the finished part of a pen stroke (pen ink v2)
+  useEffect(() => releaseFreedrawLiveInk, []);
   useEffect(() => {
     if (!canvasRef.current) {
       return;

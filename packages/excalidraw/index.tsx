@@ -108,6 +108,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     showDeprecatedFonts,
     renderScrollbars,
     imageOptions,
+    penInk,
   } = props;
 
   const canvasActions = props.UIOptions?.canvasActions;
@@ -230,6 +231,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           showDeprecatedFonts={showDeprecatedFonts}
           renderScrollbars={renderScrollbars}
           imageOptions={normalizedImageOptions}
+          penInk={penInk}
         >
           {children}
         </App>

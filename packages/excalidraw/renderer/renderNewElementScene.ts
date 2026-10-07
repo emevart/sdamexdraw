@@ -1,9 +1,14 @@
 import { throttleRAF } from "@excalidraw/common";
 
 import {
+  getContainingFrame,
+  getFreedrawPenInk,
+  getRenderOpacity,
   getTargetFrame,
+  isDashedFreedraw,
   isInvisiblySmallElement,
   renderElement,
+  renderFreedrawLiveInk,
   shouldApplyFrameClip,
 } from "@excalidraw/element";
 
@@ -67,15 +72,39 @@ const _renderNewElementScene = ({
         }
       }
 
-      renderElement(
-        newElement,
-        elementsMap,
-        allElementsMap,
-        rc,
-        context,
-        renderConfig,
-        appState,
-      );
+      if (
+        newElement.type === "freedraw" &&
+        getFreedrawPenInk() === "v2" &&
+        !isDashedFreedraw(newElement)
+      ) {
+        // sdamex #5706: pen ink v2 draws the finished part of a stroke once
+        // and rebuilds only its end on each frame
+        renderFreedrawLiveInk({
+          element: newElement,
+          context,
+          scale,
+          zoom: appState.zoom.value,
+          scrollX: appState.scrollX,
+          scrollY: appState.scrollY,
+          theme: appState.theme,
+          opacity: getRenderOpacity(
+            newElement,
+            getContainingFrame(newElement, elementsMap),
+            renderConfig.elementsPendingErasure,
+            renderConfig.pendingFlowchartNodes,
+          ),
+        });
+      } else {
+        renderElement(
+          newElement,
+          elementsMap,
+          allElementsMap,
+          rc,
+          context,
+          renderConfig,
+          appState,
+        );
+      }
     } else {
       context.clearRect(0, 0, normalizedWidth, normalizedHeight);
     }

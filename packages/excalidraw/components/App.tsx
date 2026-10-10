@@ -2941,9 +2941,7 @@ class App extends React.Component<AppProps, AppState> {
                               height: this.state.height,
                             }}
                             width={this.state.width * window.devicePixelRatio}
-                            height={
-                              this.state.height * window.devicePixelRatio
-                            }
+                            height={this.state.height * window.devicePixelRatio}
                             ref={this.handleInteractiveVisualCanvasRef}
                           />
                         </div>

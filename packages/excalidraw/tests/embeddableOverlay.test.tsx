@@ -46,10 +46,7 @@ const stroke = (id: string, x: number, y: number, size = 40) =>
     y,
     width: size,
     height: size,
-    points: [
-      pointFrom<LocalPoint>(0, 0),
-      pointFrom<LocalPoint>(size, size),
-    ],
+    points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(size, size)],
   });
 
 // `API.createElement` drops `link`
@@ -139,6 +136,7 @@ describe("renderAboveEmbeddablesScene", () => {
       renderConfig: {
         imageCache: new Map(),
         renderGrid: true,
+        canvasBackgroundColor: "#ffffff",
         isExporting: false,
         embedsValidationStatus: new Map(),
         elementsPendingErasure: new Set(),

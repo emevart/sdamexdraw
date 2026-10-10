@@ -1,0 +1,292 @@
+import React from "react";
+import { vi } from "vitest";
+
+import { arrayToMap, reseed } from "@excalidraw/common";
+import * as ElementModule from "@excalidraw/element";
+import { pointFrom } from "@excalidraw/math";
+
+import type {
+  ExcalidrawElement,
+  NonDeletedExcalidrawElement,
+  NonDeletedSceneElementsMap,
+} from "@excalidraw/element/types";
+import type { LocalPoint } from "@excalidraw/math";
+
+import { Excalidraw } from "../index";
+import * as InteractiveScene from "../renderer/interactiveScene";
+import {
+  getAboveEmbeddablesBands,
+  renderAboveEmbeddablesScene,
+} from "../renderer/staticScene";
+import { getDefaultAppState } from "../appState";
+
+import { API } from "./helpers/api";
+import { Pointer } from "./helpers/ui";
+import {
+  act,
+  mockBoundingClientRect,
+  render,
+  restoreOriginalGetBoundingClientRect,
+  unmountComponent,
+  waitFor,
+} from "./test-utils";
+
+import type { RenderableElementsMap } from "../scene/types";
+import type { StaticCanvasAppState } from "../types";
+
+const { h } = window;
+
+// sdamex #5878: strokes, selection and cursors above embeddables
+
+const stroke = (id: string, x: number, y: number, size = 40) =>
+  API.createElement({
+    type: "freedraw",
+    id,
+    x,
+    y,
+    width: size,
+    height: size,
+    points: [
+      pointFrom<LocalPoint>(0, 0),
+      pointFrom<LocalPoint>(size, size),
+    ],
+  });
+
+// `API.createElement` drops `link`
+const embed = (id: string, x: number, y: number) => ({
+  ...API.createElement({
+    type: "embeddable",
+    id,
+    x,
+    y,
+    width: 100,
+    height: 60,
+  }),
+  link: `https://example.com/${id}`,
+});
+
+const ids = (elements: readonly ExcalidrawElement[]) =>
+  elements.map((element) => element.id);
+
+describe("getAboveEmbeddablesBands", () => {
+  const bandsOf = (elements: NonDeletedExcalidrawElement[]) =>
+    getAboveEmbeddablesBands(
+      elements,
+      arrayToMap(elements) as unknown as RenderableElementsMap,
+    ).map((band) => ({
+      below: ids(band.below),
+      above: ids(band.above),
+      elements: ids(band.elements),
+    }));
+
+  it("is empty without embeddables", () => {
+    expect(bandsOf([stroke("a", 0, 0), stroke("b", 10, 10)])).toEqual([]);
+  });
+
+  it("keeps a stroke drawn before the embeddable under it", () => {
+    expect(bandsOf([stroke("under", 20, 20), embed("e", 0, 0)])).toEqual([]);
+  });
+
+  it("puts a stroke drawn over the embeddable above it", () => {
+    expect(
+      bandsOf([
+        stroke("under", 20, 20),
+        embed("e", 0, 0),
+        stroke("over", 20, 20),
+        stroke("elsewhere", 1000, 1000),
+      ]),
+    ).toEqual([{ below: ["e"], above: [], elements: ["over"] }]);
+  });
+
+  it("lets a higher embeddable cover a stroke between two embeddables", () => {
+    expect(
+      bandsOf([
+        embed("e1", 0, 0),
+        stroke("between", 20, 20),
+        embed("e2", 50, 30),
+        stroke("top", 60, 40),
+      ]),
+    ).toEqual([
+      { below: ["e1"], above: ["e2"], elements: ["between"] },
+      { below: ["e1", "e2"], above: [], elements: ["top"] },
+    ]);
+  });
+});
+
+describe("renderAboveEmbeddablesScene", () => {
+  const renderElement = vi.spyOn(ElementModule, "renderElement");
+
+  afterAll(() => {
+    renderElement.mockRestore();
+  });
+
+  const paint = (elements: NonDeletedExcalidrawElement[]) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 400;
+    canvas.height = 300;
+    const elementsMap = arrayToMap(
+      elements,
+    ) as unknown as RenderableElementsMap;
+    renderElement.mockClear();
+    renderAboveEmbeddablesScene({
+      canvas,
+      rc: null as any,
+      elementsMap,
+      allElementsMap: elementsMap as unknown as NonDeletedSceneElementsMap,
+      visibleElements: elements,
+      scale: 1,
+      appState: getDefaultAppState() as unknown as StaticCanvasAppState,
+      renderConfig: {
+        imageCache: new Map(),
+        renderGrid: true,
+        isExporting: false,
+        embedsValidationStatus: new Map(),
+        elementsPendingErasure: new Set(),
+        pendingFlowchartNodes: null,
+        theme: "light",
+      },
+    });
+    return {
+      drawn: renderElement.mock.calls.map(([element]) => element.id),
+      events: (canvas.getContext("2d") as any).__getEvents() as {
+        type: string;
+        props: Record<string, unknown>;
+      }[],
+    };
+  };
+
+  it("draws only elements above an embeddable, clipped to it", () => {
+    const { drawn, events } = paint([
+      stroke("under", 20, 20),
+      embed("e", 0, 0),
+      stroke("over", 20, 20),
+      stroke("elsewhere", 1000, 1000),
+    ]);
+    expect(drawn).toEqual(["over"]);
+    expect(events.some((event) => event.type === "clip")).toBe(true);
+    // transparent layer: no background fill
+    expect(events.some((event) => event.type === "fillRect")).toBe(false);
+  });
+
+  it("draws nothing without embeddables", () => {
+    const { drawn } = paint([stroke("a", 0, 0)]);
+    expect(drawn).toEqual([]);
+  });
+});
+
+describe("layers above embeddables", () => {
+  beforeAll(() => {
+    mockBoundingClientRect();
+  });
+
+  afterAll(() => {
+    restoreOriginalGetBoundingClientRect();
+  });
+
+  beforeEach(async () => {
+    unmountComponent();
+    reseed(7);
+    await render(
+      <Excalidraw
+        validateEmbeddable={true}
+        renderEmbeddable={() => <div data-testid="embed-body" />}
+      />,
+    );
+  });
+
+  it("stacks the overlay, the new-element and the visible interactive canvas after the embeddables", async () => {
+    act(() => {
+      API.setElements([embed("e", 10, 10), stroke("over", 20, 20)]);
+    });
+
+    const container = document.querySelector(".excalidraw")!;
+    await waitFor(() =>
+      expect(
+        container.querySelector(".excalidraw__embeddable-container"),
+      ).not.toBeNull(),
+    );
+    const embedContainer = container.querySelector(
+      ".excalidraw__embeddable-container",
+    )!;
+
+    const layer = container.querySelector(".excalidraw__above-embeddables")!;
+    expect(layer).not.toBeNull();
+    expect(
+      embedContainer.compareDocumentPosition(layer) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // the pointer target stays under the embeddables, so live embeds still
+    // get the pointer with the selection tool
+    const eventCanvas = container.querySelector("canvas.interactive")!;
+    expect(layer.contains(eventCanvas)).toBe(false);
+    expect(
+      eventCanvas.compareDocumentPosition(embedContainer) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    expect(layer.querySelector("canvas.above-embeddables")).not.toBeNull();
+    expect(layer.querySelector("canvas.interactive-visual")).not.toBeNull();
+    expect(h.app.visibleElements.map((element) => element.id)).toContain(
+      "over",
+    );
+  });
+
+  it("paints the interactive scene and the new element above the embeddables", async () => {
+    const renderInteractiveScene = vi.spyOn(
+      InteractiveScene,
+      "renderInteractiveScene",
+    );
+    act(() => {
+      API.setElements([embed("e", 10, 10)]);
+    });
+    const container = document.querySelector(".excalidraw")!;
+    await waitFor(() =>
+      expect(
+        container.querySelector(".excalidraw__embeddable-container"),
+      ).not.toBeNull(),
+    );
+    const layer = container.querySelector(".excalidraw__above-embeddables")!;
+
+    renderInteractiveScene.mockClear();
+    act(() => {
+      h.app.setActiveTool({ type: "freedraw" });
+    });
+    const pen = new Pointer("mouse");
+    pen.down(30, 30);
+    pen.move(20, 20);
+
+    // the stroke in progress is on the new-element canvas inside the layer
+    expect(h.state.newElement?.type).toBe("freedraw");
+    const layerCanvases = [...layer.querySelectorAll("canvas")];
+    expect(
+      layerCanvases.some(
+        (canvas) =>
+          !canvas.classList.contains("interactive-visual") &&
+          !canvas.classList.contains("above-embeddables"),
+      ),
+    ).toBe(true);
+    pen.up();
+
+    expect(renderInteractiveScene).toHaveBeenCalled();
+    const painted = renderInteractiveScene.mock.calls.map(
+      ([config]) => config.canvas,
+    );
+    expect(
+      painted.every((canvas) =>
+        canvas?.classList.contains("interactive-visual"),
+      ),
+    ).toBe(true);
+    renderInteractiveScene.mockRestore();
+  });
+
+  it("keeps the overlay canvas out of the DOM without embeddables", async () => {
+    act(() => {
+      API.setElements([stroke("a", 20, 20)]);
+    });
+    const layer = document.querySelector(".excalidraw__above-embeddables")!;
+    expect(layer).not.toBeNull();
+    expect(layer.querySelector("canvas.above-embeddables")).toBeNull();
+    expect(layer.querySelector("canvas.interactive-visual")).not.toBeNull();
+  });
+});

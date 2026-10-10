@@ -897,6 +897,12 @@ const activePenPointerIds = new Set<number>();
 class App extends React.Component<AppProps, AppState> {
   canvas: AppClassProperties["canvas"];
   interactiveCanvas: AppClassProperties["interactiveCanvas"] = null;
+  // sdamex #5878: layers over the embeddables' DOM: elements stacked above an
+  // embeddable, and the painted interactive scene (`interactiveCanvas` stays
+  // the pointer target under the embeddables)
+  private aboveEmbeddablesCanvas: HTMLCanvasElement =
+    document.createElement("canvas");
+  private interactiveVisualCanvas: HTMLCanvasElement | null = null;
   public sessionExportThemeOverride: AppState["theme"] | undefined;
   rc: RoughCanvas;
   unmounted: boolean = false;
@@ -2569,6 +2575,9 @@ class App extends React.Component<AppProps, AppState> {
     });
     this.visibleElements = visibleElements;
     this.hasRenderableElements = renderableElementsMap.size > 0;
+    const hasVisibleEmbeddables = visibleElements.some((element) =>
+      isIframeLikeElement(element),
+    );
 
     const allElementsMap = this.scene.getNonDeletedElementsMap();
 
@@ -2816,33 +2825,11 @@ class App extends React.Component<AppProps, AppState> {
                               theme: this.state.theme,
                             }}
                           />
-                          {newElementCanvasElement && (
-                            <NewElementCanvas
-                              appState={this.state}
-                              newElement={newElementCanvasElement}
-                              scale={window.devicePixelRatio}
-                              rc={this.rc}
-                              elementsMap={renderableElementsMap}
-                              allElementsMap={allElementsMap}
-                              renderConfig={{
-                                imageCache: this.imageCache,
-                                isExporting: false,
-                                renderGrid: false,
-                                canvasBackgroundColor:
-                                  this.state.viewBackgroundColor,
-                                embedsValidationStatus:
-                                  this.embedsValidationStatus,
-                                elementsPendingErasure:
-                                  this.elementsPendingErasure,
-                                pendingFlowchartNodes: null,
-                                theme: this.state.theme,
-                              }}
-                            />
-                          )}
                           <InteractiveCanvas
                             app={this}
                             containerRef={this.excalidrawContainerRef}
                             canvas={this.interactiveCanvas}
+                            visualCanvas={this.interactiveVisualCanvas}
                             elementsMap={renderableElementsMap}
                             visibleElements={visibleElements}
                             allElementsMap={allElementsMap}
@@ -2890,6 +2877,76 @@ class App extends React.Component<AppProps, AppState> {
                           )}
                         </ExcalidrawActionManagerContext.Provider>
                         {this.renderEmbeddables()}
+                        {/* sdamex #5878: after the embeddables in the DOM and
+                            on the same z-index, so above them; transparent to
+                            the pointer, which goes to live embeddables or to
+                            the interactive canvas under them */}
+                        <div className="excalidraw__above-embeddables">
+                          {hasVisibleEmbeddables && (
+                            <StaticCanvas
+                              layer="aboveEmbeddables"
+                              canvas={this.aboveEmbeddablesCanvas}
+                              rc={this.rc}
+                              elementsMap={renderableElementsMap}
+                              allElementsMap={allElementsMap}
+                              visibleElements={visibleElements}
+                              canvasNonce={staticCanvasNonce}
+                              selectionNonce={
+                                this.state.selectionElement?.versionNonce
+                              }
+                              scale={window.devicePixelRatio}
+                              appState={this.state}
+                              renderConfig={{
+                                imageCache: this.imageCache,
+                                isExporting: false,
+                                renderGrid: false,
+                                canvasBackgroundColor:
+                                  this.state.viewBackgroundColor,
+                                embedsValidationStatus:
+                                  this.embedsValidationStatus,
+                                elementsPendingErasure:
+                                  this.elementsPendingErasure,
+                                pendingFlowchartNodes: null,
+                                theme: this.state.theme,
+                              }}
+                            />
+                          )}
+                          {newElementCanvasElement && (
+                            <NewElementCanvas
+                              appState={this.state}
+                              newElement={newElementCanvasElement}
+                              scale={window.devicePixelRatio}
+                              rc={this.rc}
+                              elementsMap={renderableElementsMap}
+                              allElementsMap={allElementsMap}
+                              renderConfig={{
+                                imageCache: this.imageCache,
+                                isExporting: false,
+                                renderGrid: false,
+                                canvasBackgroundColor:
+                                  this.state.viewBackgroundColor,
+                                embedsValidationStatus:
+                                  this.embedsValidationStatus,
+                                elementsPendingErasure:
+                                  this.elementsPendingErasure,
+                                pendingFlowchartNodes: null,
+                                theme: this.state.theme,
+                              }}
+                            />
+                          )}
+                          <canvas
+                            className="excalidraw__canvas interactive-visual"
+                            style={{
+                              width: this.state.width,
+                              height: this.state.height,
+                            }}
+                            width={this.state.width * window.devicePixelRatio}
+                            height={
+                              this.state.height * window.devicePixelRatio
+                            }
+                            ref={this.handleInteractiveVisualCanvasRef}
+                          />
+                        </div>
                       </ExcalidrawElementsContext.Provider>
                     </ExcalidrawAppStateContext.Provider>
                   </ExcalidrawSetAppStateContext.Provider>
@@ -14366,6 +14423,12 @@ class App extends React.Component<AppProps, AppState> {
       selectedLinearElement: null,
     });
   }
+
+  private handleInteractiveVisualCanvasRef = (
+    canvas: HTMLCanvasElement | null,
+  ) => {
+    this.interactiveVisualCanvas = canvas;
+  };
 
   private handleInteractiveCanvasRef = (canvas: HTMLCanvasElement | null) => {
     // canvas is null when unmounting

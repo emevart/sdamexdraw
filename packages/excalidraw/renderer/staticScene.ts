@@ -12,6 +12,7 @@ import {
   isIframeLikeElement,
   isTextElement,
 } from "@excalidraw/element";
+import { getCornerRadius, getElementBounds } from "@excalidraw/element";
 import {
   elementOverlapsWithFrame,
   getTargetFrame,
@@ -42,6 +43,7 @@ import { t } from "../i18n";
 import { bootstrapCanvas, getNormalizedCanvasDimensions } from "./helpers";
 
 import type {
+  RenderableElementsMap,
   StaticCanvasRenderConfig,
   StaticSceneRenderConfig,
 } from "../scene/types";
@@ -259,6 +261,154 @@ const renderLinkIcon = (
     context.restore();
   }
 };
+/**
+ * sdamex #5878: one run of consecutive elements (in z-order) stacked above
+ * the same embeddables. `below` are the embeddables under these elements,
+ * `above` the embeddables over them.
+ */
+export type AboveEmbeddablesBand = {
+  below: readonly NonDeletedExcalidrawElement[];
+  above: readonly NonDeletedExcalidrawElement[];
+  elements: NonDeletedExcalidrawElement[];
+};
+
+const boundsOverlap = (
+  [ax1, ay1, ax2, ay2]: readonly number[],
+  [bx1, by1, bx2, by2]: readonly number[],
+) => ax1 <= bx2 && ax2 >= bx1 && ay1 <= by2 && ay2 >= by1;
+
+/**
+ * sdamex #5878: elements the layer above the embeddables paints.
+ *
+ * Embeddables are DOM over the static canvas, so the static canvas cannot
+ * show an element stacked above an embeddable where the two overlap. The
+ * layer above the embeddables repaints such elements: each band is clipped to
+ * the embeddables under it minus the embeddables over it, so an element
+ * keeps its z-order against every embeddable it overlaps. Elements under all
+ * embeddables, or not overlapping an embeddable under them, are left to the
+ * static canvas.
+ */
+export const getAboveEmbeddablesBands = (
+  visibleElements: readonly NonDeletedExcalidrawElement[],
+  elementsMap: RenderableElementsMap,
+): AboveEmbeddablesBand[] => {
+  const embeddables = visibleElements.filter((element) =>
+    isIframeLikeElement(element),
+  );
+  if (!embeddables.length) {
+    return [];
+  }
+  const embeddableBounds = new Map(
+    embeddables.map((element) => [
+      element.id,
+      getElementBounds(element, elementsMap),
+    ]),
+  );
+
+  const bands: AboveEmbeddablesBand[] = [];
+  let below: NonDeletedExcalidrawElement[] = [];
+  let band: AboveEmbeddablesBand | null = null;
+  for (const element of visibleElements) {
+    if (isIframeLikeElement(element)) {
+      below = [...below, element];
+      band = null;
+      continue;
+    }
+    if (!below.length) {
+      continue;
+    }
+    if (
+      isTextElement(element) &&
+      element.containerId &&
+      elementsMap.has(element.containerId)
+    ) {
+      // painted with its container
+      continue;
+    }
+    const bounds = getElementBounds(element, elementsMap);
+    if (
+      !below.some((embeddable) =>
+        boundsOverlap(bounds, embeddableBounds.get(embeddable.id)!),
+      )
+    ) {
+      continue;
+    }
+    if (!band) {
+      band = {
+        below,
+        above: embeddables.slice(below.length),
+        elements: [],
+      };
+      bands.push(band);
+    }
+    band.elements.push(element);
+  }
+  return bands;
+};
+
+/**
+ * sdamex #5878: adds the embeddable's DOM box (rotated around its center,
+ * with the corner radius of `.excalidraw__embeddable-container__inner`) to
+ * the current path, in the static scene's coordinates.
+ */
+const traceEmbeddableBox = (
+  context: CanvasRenderingContext2D,
+  element: NonDeletedExcalidrawElement,
+  appState: StaticCanvasAppState,
+) => {
+  const { width, height } = element;
+  context.save();
+  context.translate(
+    element.x + width / 2 + appState.scrollX,
+    element.y + height / 2 + appState.scrollY,
+  );
+  context.rotate(element.angle);
+  const radius = getCornerRadius(Math.min(width, height), element);
+  if (radius && context.roundRect) {
+    context.roundRect(-width / 2, -height / 2, width, height, radius);
+  } else {
+    context.rect(-width / 2, -height / 2, width, height);
+  }
+  context.restore();
+};
+
+const paintAboveEmbeddables = (
+  context: CanvasRenderingContext2D,
+  visibleElements: readonly NonDeletedExcalidrawElement[],
+  elementsMap: RenderableElementsMap,
+  appState: StaticCanvasAppState,
+  normalizedWidth: number,
+  normalizedHeight: number,
+  paintElement: (element: NonDeletedExcalidrawElement) => void,
+) => {
+  const zoom = appState.zoom.value;
+  for (const band of getAboveEmbeddablesBands(visibleElements, elementsMap)) {
+    context.save();
+    // minus each embeddable over the band: the viewport with a hole
+    // (even-odd), one clip per embeddable since clips intersect
+    for (const embeddable of band.above) {
+      context.beginPath();
+      context.rect(
+        -1,
+        -1,
+        normalizedWidth / zoom + 2,
+        normalizedHeight / zoom + 2,
+      );
+      traceEmbeddableBox(context, embeddable, appState);
+      context.clip("evenodd");
+    }
+    // within the union of the embeddables under the band (all boxes have the
+    // same winding, so nonzero gives the union)
+    context.beginPath();
+    for (const embeddable of band.below) {
+      traceEmbeddableBox(context, embeddable, appState);
+    }
+    context.clip();
+    band.elements.forEach(paintElement);
+    context.restore();
+  }
+};
+
 const paintStaticScene = ({
   canvas,
   rc,
@@ -268,12 +418,15 @@ const paintStaticScene = ({
   scale,
   appState,
   renderConfig,
+  layer,
 }: StaticSceneRenderConfig) => {
   if (canvas === null || !visibleElements) {
     return;
   }
 
-  const { renderGrid = true, isExporting } = renderConfig;
+  const { isExporting } = renderConfig;
+  const renderGrid =
+    layer === "aboveEmbeddables" ? false : renderConfig.renderGrid ?? true;
 
   const [normalizedWidth, normalizedHeight] = getNormalizedCanvasDimensions(
     canvas,
@@ -287,7 +440,9 @@ const paintStaticScene = ({
     normalizedHeight,
     theme: appState.theme,
     isExporting,
-    viewBackgroundColor: appState.viewBackgroundColor,
+    // sdamex #5878: the layer above the embeddables is transparent
+    viewBackgroundColor:
+      layer === "aboveEmbeddables" ? "transparent" : appState.viewBackgroundColor,
   });
 
   // Apply zoom
@@ -330,10 +485,7 @@ const paintStaticScene = ({
 
   const inFrameGroupsMap = new Map<string, boolean>();
 
-  // Paint visible elements
-  visibleElements
-    .filter((el) => !isIframeLikeElement(el))
-    .forEach((element) => {
+  const paintElement = (element: NonDeletedExcalidrawElement) => {
       try {
         const frameId = element.frameId || appState.frameToHighlight?.id;
 
@@ -415,7 +567,28 @@ const paintStaticScene = ({
           element.height,
         );
       }
-    });
+  };
+
+  // sdamex #5878: the layer above the embeddables' DOM paints only the
+  // elements stacked above an embeddable, clipped to it (see
+  // `getAboveEmbeddablesBands`); no background, grid or embeddables
+  if (layer === "aboveEmbeddables") {
+    paintAboveEmbeddables(
+      context,
+      visibleElements,
+      elementsMap,
+      appState,
+      normalizedWidth,
+      normalizedHeight,
+      paintElement,
+    );
+    return;
+  }
+
+  // Paint visible elements
+  visibleElements
+    .filter((el) => !isIframeLikeElement(el))
+    .forEach(paintElement);
 
   // render embeddables on top
   visibleElements
@@ -659,4 +832,27 @@ export const renderStaticScene = (
   }
 
   _renderStaticScene(renderConfig);
+};
+
+/**
+ * sdamex #5878: the layer above the embeddables' DOM (see
+ * `getAboveEmbeddablesBands`). Throttled per canvas like the static scene;
+ * kept apart from `renderStaticScene` so static repaint counts stay the same.
+ */
+export const renderAboveEmbeddablesScene = (
+  renderConfig: Omit<StaticSceneRenderConfig, "layer">,
+  throttle?: boolean,
+) => {
+  const config: StaticSceneRenderConfig = {
+    ...renderConfig,
+    layer: "aboveEmbeddables",
+  };
+  cancelZoomRasterContinuation(config.canvas);
+
+  if (throttle) {
+    renderStaticSceneThrottled(config);
+    return;
+  }
+
+  _renderStaticScene(config);
 };

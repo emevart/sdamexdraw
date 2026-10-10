@@ -10,6 +10,7 @@ import type {
 import { isRenderThrottlingEnabled } from "../../reactUtils";
 import {
   cancelZoomRasterContinuation,
+  renderAboveEmbeddablesScene,
   renderStaticScene,
   renderStaticSceneThrottled,
 } from "../../renderer/staticScene";
@@ -32,6 +33,11 @@ type StaticCanvasProps = {
   scale: number;
   appState: StaticCanvasAppState;
   renderConfig: StaticCanvasRenderConfig;
+  /**
+   * sdamex #5878: `aboveEmbeddables` is the transparent layer over the
+   * embeddables' DOM (`renderAboveEmbeddablesScene`).
+   */
+  layer?: "aboveEmbeddables";
 };
 
 const StaticCanvas = (props: StaticCanvasProps) => {
@@ -66,10 +72,15 @@ const StaticCanvas = (props: StaticCanvasProps) => {
       isComponentMounted.current = true;
 
       wrapper.replaceChildren(canvas);
-      canvas.classList.add("excalidraw__canvas", "static");
+      canvas.classList.add(
+        "excalidraw__canvas",
+        props.layer === "aboveEmbeddables" ? "above-embeddables" : "static",
+      );
     }
 
-    renderStaticScene(
+    (props.layer === "aboveEmbeddables"
+      ? renderAboveEmbeddablesScene
+      : renderStaticScene)(
       {
         canvas,
         rc: props.rc,
@@ -134,7 +145,8 @@ const areEqual = (
     // instances with the same content (e.g. a remote batch that touched only
     // off-screen elements) therefore no longer repaint the static canvas.
     prevProps.canvasNonce !== nextProps.canvasNonce ||
-    prevProps.scale !== nextProps.scale
+    prevProps.scale !== nextProps.scale ||
+    prevProps.layer !== nextProps.layer
   ) {
     return false;
   }

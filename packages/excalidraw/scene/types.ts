@@ -86,6 +86,11 @@ export type StaticSceneRenderConfig = {
   scale: number;
   appState: StaticCanvasAppState;
   renderConfig: StaticCanvasRenderConfig;
+  /**
+   * sdamex #5878: `aboveEmbeddables` paints the transparent layer over the
+   * embeddables' DOM: only elements stacked above an embeddable, clipped to it.
+   */
+  layer?: "aboveEmbeddables";
 };
 
 export type InteractiveSceneRenderAnimationState = {

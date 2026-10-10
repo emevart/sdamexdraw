@@ -35,6 +35,12 @@ import type { DOMAttributes } from "react";
 type InteractiveCanvasProps = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   canvas: HTMLCanvasElement | null;
+  /**
+   * sdamex #5878: the canvas the interactive scene is painted on, above the
+   * embeddables' DOM. `canvas` stays the pointer target under the
+   * embeddables and is left blank. Without it, `canvas` is painted.
+   */
+  visualCanvas?: HTMLCanvasElement | null;
   elementsMap: RenderableElementsMap;
   visibleElements: readonly NonDeletedExcalidrawElement[];
   selectedElements: readonly NonDeletedExcalidrawElement[];
@@ -144,7 +150,7 @@ const InteractiveCanvas = (props: InteractiveCanvasProps) => {
 
     rendererParams.current = {
       app: props.app,
-      canvas: props.canvas,
+      canvas: props.visualCanvas ?? props.canvas,
       elementsMap: props.elementsMap,
       visibleElements: props.visibleElements,
       selectedElements: props.selectedElements,
@@ -283,6 +289,7 @@ const areEqual = (
     prevProps.selectionNonce !== nextProps.selectionNonce ||
     prevProps.canvasNonce !== nextProps.canvasNonce ||
     prevProps.scale !== nextProps.scale ||
+    prevProps.visualCanvas !== nextProps.visualCanvas ||
     // we need to memoize on elementsMap because they may have renewed
     // even if canvasNonce didn't change (e.g. we filter elements out based
     // on appState)

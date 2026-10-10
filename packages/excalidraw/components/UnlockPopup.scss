@@ -3,7 +3,8 @@
 .excalidraw {
   .UnlockPopup {
     position: absolute;
-    z-index: var(--zIndex-interactiveCanvas);
+    // sdamex #5878: above the layer over the embeddables (z-index 2)
+    z-index: var(--zIndex-canvasButtons);
     display: flex;
     justify-content: center;
     align-items: center;

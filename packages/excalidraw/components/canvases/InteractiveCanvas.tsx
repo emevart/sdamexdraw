@@ -93,6 +93,26 @@ const InteractiveCanvas = (props: InteractiveCanvasProps) => {
   const isComponentMounted = useRef(false);
   const rendererParams = useRef(null as InteractiveSceneRenderConfig | null);
 
+  // sdamex #5878: the visible canvas is owned by App; sized here like the
+  // pointer target (resizing clears it, the scene is repainted below)
+  const { visualCanvas } = props;
+  const width = props.appState.width;
+  const height = props.appState.height;
+  const scale = props.scale;
+  useEffect(() => {
+    if (!visualCanvas) {
+      return;
+    }
+    visualCanvas.style.width = `${width}px`;
+    visualCanvas.style.height = `${height}px`;
+    if (visualCanvas.width !== width * scale) {
+      visualCanvas.width = width * scale;
+    }
+    if (visualCanvas.height !== height * scale) {
+      visualCanvas.height = height * scale;
+    }
+  }, [visualCanvas, width, height, scale]);
+
   useEffect(() => {
     if (!isComponentMounted.current) {
       isComponentMounted.current = true;
@@ -216,8 +236,10 @@ const InteractiveCanvas = (props: InteractiveCanvasProps) => {
             ? CURSOR_TYPE.GRAB
             : CURSOR_TYPE.AUTO,
       }}
-      width={props.appState.width * props.scale}
-      height={props.appState.height * props.scale}
+      // sdamex #5878: with a visible canvas this one is never painted, so it
+      // keeps a 1x1 buffer; its CSS size still takes the pointer
+      width={props.visualCanvas ? 1 : props.appState.width * props.scale}
+      height={props.visualCanvas ? 1 : props.appState.height * props.scale}
       ref={props.handleCanvasRef}
       onContextMenu={props.onContextMenu}
       onClick={props.onClick}

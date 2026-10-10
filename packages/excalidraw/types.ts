@@ -915,6 +915,11 @@ export type AppClassProperties = {
   interactiveCanvas: HTMLCanvasElement | null;
   /** static canvas */
   canvas: HTMLCanvasElement;
+  /**
+   * sdamex #5878: canvas over the embeddables' DOM with the elements stacked
+   * above the lowest visible embeddable (see `renderAboveEmbeddablesScene`)
+   */
+  aboveEmbeddablesCanvas: HTMLCanvasElement;
   focusContainer(): void;
   library: Library;
   imageCache: Map<

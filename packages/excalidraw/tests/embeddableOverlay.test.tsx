@@ -307,13 +307,19 @@ describe("layers above embeddables", () => {
     renderInteractiveScene.mockRestore();
   });
 
-  it("keeps the overlay canvas out of the DOM without embeddables", async () => {
+  it("keeps the layer mounted without embeddables", async () => {
     act(() => {
       API.setElements([stroke("a", 20, 20)]);
     });
     const layer = document.querySelector(".excalidraw__above-embeddables")!;
     expect(layer).not.toBeNull();
-    expect(layer.querySelector("canvas.above-embeddables")).toBeNull();
+    expect(layer.querySelector("canvas.above-embeddables")).not.toBeNull();
     expect(layer.querySelector("canvas.interactive-visual")).not.toBeNull();
+    // the pointer target is never painted: 1x1 buffer, full CSS size
+    const eventCanvas = document.querySelector(
+      "canvas.interactive",
+    ) as HTMLCanvasElement;
+    expect(eventCanvas.width).toBe(1);
+    expect(eventCanvas.style.width).toBe(`${h.state.width}px`);
   });
 });

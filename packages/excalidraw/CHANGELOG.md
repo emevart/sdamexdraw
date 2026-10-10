@@ -11,6 +11,17 @@ The change should be grouped under one of the below section and must contain PR 
 Please add the latest change on the top under the correct section.
 -->
 
+## 0.30.12 (2026-10-11)
+
+### Features
+
+- Штрихи, выделение и курсоры соавторов над вставками (emevart/billion-dollars#5878). Раньше DOM-слой вставок (`.excalidraw__embeddable-container`, z-index 2) лежал над всеми канвасами, и вставка закрывала нарисованное поверх неё, рамку выделения и курсоры. Теперь после вставок в DOM идёт слой `.excalidraw__above-embeddables` (тот же z-index, `pointer-events: none`) с тремя канвасами:
+  - `canvas.above-embeddables` — все элементы выше нижней видимой вставки по z-order. Отрезок элементов между двумя вставками клипуется без вставок над ним, поэтому элемент остаётся под вставкой, которая выше него. Основной статический канвас (`layer: "belowEmbeddables"`) эти элементы больше не рисует: двойной отрисовки нет. Канвас монтируется, только пока в кадре есть вставка;
+  - канвас нового элемента (штрих в процессе);
+  - `canvas.interactive-visual` — интерактивная сцена (выделение, ручки, курсоры и выделения соавторов, рамка выделения). `canvas.interactive` остаётся приёмником указателя под вставками и ничего не рисует, поэтому вставка, которой хост дал `pointer-events: auto`, получает нажатия как раньше.
+- Правило z-order: элемент рисуется над вставкой, только если он выше неё по порядку элементов. Нарисованное до вставки (ниже по z) остаётся под ней; «На передний/задний план» меняет это как у любых элементов. Экспорт (`exportToCanvas`, `exportToSvg`) не меняется.
+- `renderAboveEmbeddablesScene` и `getAboveEmbeddablesBands` в `renderer/staticScene`; проп `layer` у `StaticSceneRenderConfig`; проп `visualCanvas` у `InteractiveCanvas`. Тесты: `tests/embeddableOverlay.test.tsx`; в тестах интерактивную сцену читать с `GlobalTestState.interactivePaintCanvas`.
+
 ## 0.30.11 (2026-10-07)
 
 [PR #23](https://github.com/emevart/sdamexdraw/pull/23).

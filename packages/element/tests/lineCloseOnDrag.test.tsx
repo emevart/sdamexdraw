@@ -69,7 +69,7 @@ const globalPoint = (element: ExcalidrawLinearElement, index: number) => {
 
 // the close indicator is an 8px ring at the first point (see interactiveScene)
 const interactiveContext = () =>
-  GlobalTestState.interactiveCanvas.getContext("2d") as any;
+  GlobalTestState.interactivePaintCanvas.getContext("2d") as any;
 const clearCanvasEvents = () => interactiveContext().__clearEvents();
 // any canvas call since the last clear: the interactive scene was repainted
 const interactiveScenePainted = () =>

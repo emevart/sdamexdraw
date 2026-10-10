@@ -12,7 +12,7 @@ import {
   isIframeLikeElement,
   isTextElement,
 } from "@excalidraw/element";
-import { getCornerRadius, getElementBounds } from "@excalidraw/element";
+import { getCornerRadius } from "@excalidraw/element";
 import {
   elementOverlapsWithFrame,
   getTargetFrame,
@@ -43,7 +43,6 @@ import { t } from "../i18n";
 import { bootstrapCanvas, getNormalizedCanvasDimensions } from "./helpers";
 
 import type {
-  RenderableElementsMap,
   StaticCanvasRenderConfig,
   StaticSceneRenderConfig,
 } from "../scene/types";
@@ -262,83 +261,57 @@ const renderLinkIcon = (
   }
 };
 /**
- * sdamex #5878: one run of consecutive elements (in z-order) stacked above
- * the same embeddables. `below` are the embeddables under these elements,
- * `above` the embeddables over them.
+ * sdamex #5878: one run of consecutive elements (in z-order) between two
+ * embeddables; `above` are the embeddables stacked over them.
  */
 export type AboveEmbeddablesBand = {
-  below: readonly NonDeletedExcalidrawElement[];
   above: readonly NonDeletedExcalidrawElement[];
   elements: NonDeletedExcalidrawElement[];
 };
 
-const boundsOverlap = (
-  [ax1, ay1, ax2, ay2]: readonly number[],
-  [bx1, by1, bx2, by2]: readonly number[],
-) => ax1 <= bx2 && ax2 >= bx1 && ay1 <= by2 && ay2 >= by1;
+const getFirstEmbeddableIndex = (
+  visibleElements: readonly NonDeletedExcalidrawElement[],
+) => visibleElements.findIndex((element) => isIframeLikeElement(element));
 
 /**
  * sdamex #5878: elements the layer above the embeddables paints.
  *
- * Embeddables are DOM over the static canvas, so the static canvas cannot
- * show an element stacked above an embeddable where the two overlap. The
- * layer above the embeddables repaints such elements: each band is clipped to
- * the embeddables under it minus the embeddables over it, so an element
- * keeps its z-order against every embeddable it overlaps. Elements under all
- * embeddables, or not overlapping an embeddable under them, are left to the
- * static canvas.
+ * Embeddables are DOM over the static canvas, so an element painted on the
+ * static canvas is hidden under every embeddable it overlaps. Every element
+ * stacked above the lowest visible embeddable is therefore painted on the
+ * layer over the embeddables' DOM instead (the static canvas skips them, see
+ * `layer: "belowEmbeddables"`). Each band is clipped to exclude the
+ * embeddables stacked over it, so an element keeps its z-order against every
+ * embeddable; plain elements keep their order among themselves, as all of
+ * the layer's elements are above all of the static canvas's.
  */
 export const getAboveEmbeddablesBands = (
   visibleElements: readonly NonDeletedExcalidrawElement[],
-  elementsMap: RenderableElementsMap,
 ): AboveEmbeddablesBand[] => {
+  const firstEmbeddableIndex = getFirstEmbeddableIndex(visibleElements);
+  if (firstEmbeddableIndex < 0) {
+    return [];
+  }
   const embeddables = visibleElements.filter((element) =>
     isIframeLikeElement(element),
   );
-  if (!embeddables.length) {
-    return [];
-  }
-  const embeddableBounds = new Map(
-    embeddables.map((element) => [
-      element.id,
-      getElementBounds(element, elementsMap),
-    ]),
-  );
 
   const bands: AboveEmbeddablesBand[] = [];
-  let below: NonDeletedExcalidrawElement[] = [];
+  let embeddablesBelow = 0;
   let band: AboveEmbeddablesBand | null = null;
-  for (const element of visibleElements) {
+  for (
+    let index = firstEmbeddableIndex;
+    index < visibleElements.length;
+    index++
+  ) {
+    const element = visibleElements[index];
     if (isIframeLikeElement(element)) {
-      below = [...below, element];
+      embeddablesBelow++;
       band = null;
       continue;
     }
-    if (!below.length) {
-      continue;
-    }
-    if (
-      isTextElement(element) &&
-      element.containerId &&
-      elementsMap.has(element.containerId)
-    ) {
-      // painted with its container
-      continue;
-    }
-    const bounds = getElementBounds(element, elementsMap);
-    if (
-      !below.some((embeddable) =>
-        boundsOverlap(bounds, embeddableBounds.get(embeddable.id)!),
-      )
-    ) {
-      continue;
-    }
     if (!band) {
-      band = {
-        below,
-        above: embeddables.slice(below.length),
-        elements: [],
-      };
+      band = { above: embeddables.slice(embeddablesBelow), elements: [] };
       bands.push(band);
     }
     band.elements.push(element);
@@ -375,14 +348,13 @@ const traceEmbeddableBox = (
 const paintAboveEmbeddables = (
   context: CanvasRenderingContext2D,
   visibleElements: readonly NonDeletedExcalidrawElement[],
-  elementsMap: RenderableElementsMap,
   appState: StaticCanvasAppState,
   normalizedWidth: number,
   normalizedHeight: number,
   paintElement: (element: NonDeletedExcalidrawElement) => void,
 ) => {
   const zoom = appState.zoom.value;
-  for (const band of getAboveEmbeddablesBands(visibleElements, elementsMap)) {
+  for (const band of getAboveEmbeddablesBands(visibleElements)) {
     context.save();
     // minus each embeddable over the band: the viewport with a hole
     // (even-odd), one clip per embeddable since clips intersect
@@ -397,13 +369,6 @@ const paintAboveEmbeddables = (
       traceEmbeddableBox(context, embeddable, appState);
       context.clip("evenodd");
     }
-    // within the union of the embeddables under the band (all boxes have the
-    // same winding, so nonzero gives the union)
-    context.beginPath();
-    for (const embeddable of band.below) {
-      traceEmbeddableBox(context, embeddable, appState);
-    }
-    context.clip();
     band.elements.forEach(paintElement);
     context.restore();
   }
@@ -578,7 +543,6 @@ const paintStaticScene = ({
     paintAboveEmbeddables(
       context,
       visibleElements,
-      elementsMap,
       appState,
       normalizedWidth,
       normalizedHeight,
@@ -587,9 +551,20 @@ const paintStaticScene = ({
     return;
   }
 
+  // sdamex #5878: under the embeddables' DOM, only elements stacked below the
+  // lowest visible embeddable; the rest is on the layer above them
+  const paintedElementsEnd =
+    layer === "belowEmbeddables" && !isExporting
+      ? getFirstEmbeddableIndex(visibleElements)
+      : -1;
+
   // Paint visible elements
   visibleElements
-    .filter((el) => !isIframeLikeElement(el))
+    .filter(
+      (el, index) =>
+        !isIframeLikeElement(el) &&
+        (paintedElementsEnd < 0 || index < paintedElementsEnd),
+    )
     .forEach(paintElement);
 
   // render embeddables on top

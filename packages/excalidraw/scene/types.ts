@@ -87,10 +87,13 @@ export type StaticSceneRenderConfig = {
   appState: StaticCanvasAppState;
   renderConfig: StaticCanvasRenderConfig;
   /**
-   * sdamex #5878: `aboveEmbeddables` paints the transparent layer over the
-   * embeddables' DOM: only elements stacked above an embeddable, clipped to it.
+   * sdamex #5878: the editor's canvases around the embeddables' DOM.
+   * `belowEmbeddables` (the static canvas) paints only elements stacked below
+   * the lowest visible embeddable; `aboveEmbeddables` (a transparent layer
+   * over the embeddables) paints the rest, each run clipped to exclude the
+   * embeddables stacked over it. Unset: everything (export).
    */
-  layer?: "aboveEmbeddables";
+  layer?: "belowEmbeddables" | "aboveEmbeddables";
 };
 
 export type InteractiveSceneRenderAnimationState = {

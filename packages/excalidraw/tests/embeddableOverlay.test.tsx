@@ -17,6 +17,7 @@ import * as InteractiveScene from "../renderer/interactiveScene";
 import {
   getAboveEmbeddablesBands,
   renderAboveEmbeddablesScene,
+  renderStaticScene,
 } from "../renderer/staticScene";
 import { getDefaultAppState } from "../appState";
 
@@ -67,11 +68,7 @@ const ids = (elements: readonly ExcalidrawElement[]) =>
 
 describe("getAboveEmbeddablesBands", () => {
   const bandsOf = (elements: NonDeletedExcalidrawElement[]) =>
-    getAboveEmbeddablesBands(
-      elements,
-      arrayToMap(elements) as unknown as RenderableElementsMap,
-    ).map((band) => ({
-      below: ids(band.below),
+    getAboveEmbeddablesBands(elements).map((band) => ({
       above: ids(band.above),
       elements: ids(band.elements),
     }));
@@ -84,7 +81,7 @@ describe("getAboveEmbeddablesBands", () => {
     expect(bandsOf([stroke("under", 20, 20), embed("e", 0, 0)])).toEqual([]);
   });
 
-  it("puts a stroke drawn over the embeddable above it", () => {
+  it("moves everything stacked above the lowest embeddable over it", () => {
     expect(
       bandsOf([
         stroke("under", 20, 20),
@@ -92,7 +89,7 @@ describe("getAboveEmbeddablesBands", () => {
         stroke("over", 20, 20),
         stroke("elsewhere", 1000, 1000),
       ]),
-    ).toEqual([{ below: ["e"], above: [], elements: ["over"] }]);
+    ).toEqual([{ above: [], elements: ["over", "elsewhere"] }]);
   });
 
   it("lets a higher embeddable cover a stroke between two embeddables", () => {
@@ -104,20 +101,23 @@ describe("getAboveEmbeddablesBands", () => {
         stroke("top", 60, 40),
       ]),
     ).toEqual([
-      { below: ["e1"], above: ["e2"], elements: ["between"] },
-      { below: ["e1", "e2"], above: [], elements: ["top"] },
+      { above: ["e2"], elements: ["between"] },
+      { above: [], elements: ["top"] },
     ]);
   });
 });
 
-describe("renderAboveEmbeddablesScene", () => {
+describe("canvases around the embeddables", () => {
   const renderElement = vi.spyOn(ElementModule, "renderElement");
 
   afterAll(() => {
     renderElement.mockRestore();
   });
 
-  const paint = (elements: NonDeletedExcalidrawElement[]) => {
+  const paint = (
+    elements: NonDeletedExcalidrawElement[],
+    layer: "belowEmbeddables" | "aboveEmbeddables" | undefined,
+  ) => {
     const canvas = document.createElement("canvas");
     canvas.width = 400;
     canvas.height = 300;
@@ -125,7 +125,7 @@ describe("renderAboveEmbeddablesScene", () => {
       elements,
     ) as unknown as RenderableElementsMap;
     renderElement.mockClear();
-    renderAboveEmbeddablesScene({
+    const config = {
       canvas,
       rc: null as any,
       elementsMap,
@@ -139,13 +139,22 @@ describe("renderAboveEmbeddablesScene", () => {
         canvasBackgroundColor: "#ffffff",
         isExporting: false,
         embedsValidationStatus: new Map(),
-        elementsPendingErasure: new Set(),
+        elementsPendingErasure: new Set<string>(),
         pendingFlowchartNodes: null,
-        theme: "light",
+        theme: "light" as const,
       },
-    });
+    };
+    if (layer === "aboveEmbeddables") {
+      renderAboveEmbeddablesScene(config);
+    } else {
+      renderStaticScene({ ...config, layer });
+    }
     return {
-      drawn: renderElement.mock.calls.map(([element]) => element.id),
+      // without `embedsValidationStatus` the embeddables also get their
+      // placeholder labels (temporary text elements), left out here
+      drawn: renderElement.mock.calls
+        .map(([element]) => element.id)
+        .filter((id) => elementsMap.has(id)),
       events: (canvas.getContext("2d") as any).__getEvents() as {
         type: string;
         props: Record<string, unknown>;
@@ -153,22 +162,42 @@ describe("renderAboveEmbeddablesScene", () => {
     };
   };
 
-  it("draws only elements above an embeddable, clipped to it", () => {
-    const { drawn, events } = paint([
-      stroke("under", 20, 20),
-      embed("e", 0, 0),
-      stroke("over", 20, 20),
-      stroke("elsewhere", 1000, 1000),
-    ]);
-    expect(drawn).toEqual(["over"]);
-    expect(events.some((event) => event.type === "clip")).toBe(true);
+  const scene = () => [
+    stroke("under", 20, 20),
+    embed("e1", 0, 0),
+    stroke("between", 20, 20),
+    embed("e2", 50, 30),
+    stroke("top", 60, 40),
+  ];
+
+  it("paints elements above the lowest embeddable on the layer over them", () => {
+    const { drawn, events } = paint(scene(), "aboveEmbeddables");
+    expect(drawn).toEqual(["between", "top"]);
+    // `between` is clipped to exclude e2
+    expect(
+      events
+        .filter((event) => event.type === "clip")
+        .map((event) => event.props.fillRule),
+    ).toEqual(["evenodd"]);
     // transparent layer: no background fill
     expect(events.some((event) => event.type === "fillRect")).toBe(false);
   });
 
-  it("draws nothing without embeddables", () => {
-    const { drawn } = paint([stroke("a", 0, 0)]);
+  it("leaves them off the static canvas under the embeddables", () => {
+    const { drawn } = paint(scene(), "belowEmbeddables");
+    // embeddables are painted last (placeholder, link icon), as before
+    expect(drawn).toEqual(["under", "e1", "e2"]);
+  });
+
+  it("still paints everything without a layer (export)", () => {
+    const { drawn } = paint(scene(), undefined);
+    expect(drawn).toEqual(["under", "between", "top", "e1", "e2"]);
+  });
+
+  it("paints nothing over the embeddables without embeddables", () => {
+    const { drawn } = paint([stroke("a", 0, 0)], "aboveEmbeddables");
     expect(drawn).toEqual([]);
+    expect(paint([stroke("a", 0, 0)], "belowEmbeddables").drawn).toEqual(["a"]);
   });
 });
 

@@ -2799,6 +2799,7 @@ class App extends React.Component<AppProps, AppState> {
                             />
                           )}
                           <StaticCanvas
+                            layer="belowEmbeddables"
                             canvas={this.canvas}
                             rc={this.rc}
                             elementsMap={renderableElementsMap}

@@ -34,10 +34,11 @@ type StaticCanvasProps = {
   appState: StaticCanvasAppState;
   renderConfig: StaticCanvasRenderConfig;
   /**
-   * sdamex #5878: `aboveEmbeddables` is the transparent layer over the
-   * embeddables' DOM (`renderAboveEmbeddablesScene`).
+   * sdamex #5878: `belowEmbeddables` is the editor's static canvas under the
+   * embeddables' DOM, `aboveEmbeddables` the transparent layer over them
+   * (`renderAboveEmbeddablesScene`). See `StaticSceneRenderConfig.layer`.
    */
-  layer?: "aboveEmbeddables";
+  layer?: "belowEmbeddables" | "aboveEmbeddables";
 };
 
 const StaticCanvas = (props: StaticCanvasProps) => {
@@ -78,21 +79,24 @@ const StaticCanvas = (props: StaticCanvasProps) => {
       );
     }
 
-    (props.layer === "aboveEmbeddables"
-      ? renderAboveEmbeddablesScene
-      : renderStaticScene)(
-      {
-        canvas,
-        rc: props.rc,
-        scale: props.scale,
-        elementsMap: props.elementsMap,
-        allElementsMap: props.allElementsMap,
-        visibleElements: props.visibleElements,
-        appState: props.appState,
-        renderConfig: props.renderConfig,
-      },
-      isRenderThrottlingEnabled(),
-    );
+    const config = {
+      canvas,
+      rc: props.rc,
+      scale: props.scale,
+      elementsMap: props.elementsMap,
+      allElementsMap: props.allElementsMap,
+      visibleElements: props.visibleElements,
+      appState: props.appState,
+      renderConfig: props.renderConfig,
+    };
+    if (props.layer === "aboveEmbeddables") {
+      renderAboveEmbeddablesScene(config, isRenderThrottlingEnabled());
+    } else {
+      renderStaticScene(
+        props.layer ? { ...config, layer: props.layer } : config,
+        isRenderThrottlingEnabled(),
+      );
+    }
   });
 
   return <div className="excalidraw__canvas-wrapper" ref={wrapperRef} />;

@@ -76,6 +76,10 @@ export const EyeDropper: React.FC<{
     let isHoldingPointerDown = false;
 
     const ctx = app.canvas.getContext("2d")!;
+    // sdamex #5878: elements stacked above an embeddable are on the canvas
+    // over the embeddables; it is transparent elsewhere
+    const aboveEmbeddablesCtx =
+      app.aboveEmbeddablesCanvas?.getContext("2d") ?? null;
 
     const getCurrentColor = ({
       clientX,
@@ -84,12 +88,11 @@ export const EyeDropper: React.FC<{
       clientX: number;
       clientY: number;
     }) => {
-      const pixel = ctx.getImageData(
-        (clientX - appState.offsetLeft) * window.devicePixelRatio,
-        (clientY - appState.offsetTop) * window.devicePixelRatio,
-        1,
-        1,
-      ).data;
+      const x = (clientX - appState.offsetLeft) * window.devicePixelRatio;
+      const y = (clientY - appState.offsetTop) * window.devicePixelRatio;
+      const above = aboveEmbeddablesCtx?.getImageData(x, y, 1, 1).data;
+      const pixel =
+        above && above[3] > 0 ? above : ctx.getImageData(x, y, 1, 1).data;
 
       return rgbToHex(pixel[0], pixel[1], pixel[2]);
     };
@@ -210,6 +213,7 @@ export const EyeDropper: React.FC<{
   }, [
     stableProps,
     app.canvas,
+    app.aboveEmbeddablesCanvas,
     eyeDropperContainer,
     colorPickerType,
     excalidrawContainer,

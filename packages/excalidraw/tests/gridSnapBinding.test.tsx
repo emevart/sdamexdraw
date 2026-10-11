@@ -60,7 +60,7 @@ const drawArrow = (from: GlobalPoint, to: GlobalPoint) => {
 
 // the suggested binding draws side midpoints as 4px dots (interactiveScene)
 const interactiveContext = () =>
-  GlobalTestState.interactiveCanvas.getContext("2d") as any;
+  GlobalTestState.interactivePaintCanvas.getContext("2d") as any;
 const clearCanvasEvents = () => interactiveContext().__clearEvents();
 const midpointIndicatorDrawnAt = (x: number, y: number) =>
   interactiveContext()

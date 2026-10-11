@@ -69,6 +69,14 @@ const renderApp: TestRenderFn = async (ui, options) => {
     },
   });
 
+  Object.defineProperty(GlobalTestState, "interactivePaintCanvas", {
+    // sdamex #5878: the interactive scene is painted above the embeddables;
+    // `interactiveCanvas` stays the (blank) pointer target under them
+    get() {
+      return renderResult.container.querySelector("canvas.interactive-visual")!;
+    },
+  });
+
   Object.defineProperty(GlobalTestState, "interactiveCanvas", {
     // must be a getter because at the time of ExcalidrawApp render the
     // child App component isn't likely mounted yet (and thus canvas not
@@ -127,6 +135,12 @@ export class GlobalTestState {
    * retrieves interactive canvas for currently rendered app instance
    */
   static get interactiveCanvas(): HTMLCanvasElement {
+    return null!;
+  }
+  /**
+   * sdamex #5878: canvas the interactive scene is painted on
+   */
+  static get interactivePaintCanvas(): HTMLCanvasElement {
     return null!;
   }
 }

@@ -157,6 +157,27 @@ body.excalidraw-cursor-resize * {
     pointer-events: none;
   }
 
+  // sdamex #5878: elements stacked above an embeddable, the new element and
+  // the painted interactive scene (selection, cursors). Same z-index as the
+  // embeddables and after them in the DOM, so above them and below the
+  // wysiwyg editor, trails and UI (z-index 3+). Never takes the pointer:
+  // live embeddables and the interactive canvas under them get it.
+  &__above-embeddables {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+
+    canvas {
+      pointer-events: none;
+    }
+
+    canvas.interactive-visual {
+      // as `canvas.interactive`: theme filter for UI drawn on it
+      filter: var(--theme-filter);
+    }
+  }
+
   .FixedSideContainer {
     padding-top: var(--sat, 0);
     padding-right: var(--sar, 0);

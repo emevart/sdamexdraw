@@ -897,6 +897,15 @@ const activePenPointerIds = new Set<number>();
 class App extends React.Component<AppProps, AppState> {
   canvas: AppClassProperties["canvas"];
   interactiveCanvas: AppClassProperties["interactiveCanvas"] = null;
+  // sdamex #5878: layers over the embeddables' DOM: elements stacked above an
+  // embeddable, and the painted interactive scene (`interactiveCanvas` stays
+  // the pointer target under the embeddables)
+  aboveEmbeddablesCanvas: AppClassProperties["aboveEmbeddablesCanvas"] =
+    document.createElement("canvas");
+  private interactiveVisualCanvas: HTMLCanvasElement = Object.assign(
+    document.createElement("canvas"),
+    { className: "excalidraw__canvas interactive-visual" },
+  );
   public sessionExportThemeOverride: AppState["theme"] | undefined;
   rc: RoughCanvas;
   unmounted: boolean = false;
@@ -2450,7 +2459,8 @@ class App extends React.Component<AppProps, AppState> {
                 this.state.viewBackgroundColor,
                 isDarkTheme,
               ),
-              zIndex: 2,
+              // sdamex #5878: above the layer over the embeddables
+              zIndex: 3,
               border: "none",
               display: "block",
               padding: `${FRAME_NAME_EDIT_PADDING}px`,
@@ -2790,6 +2800,7 @@ class App extends React.Component<AppProps, AppState> {
                             />
                           )}
                           <StaticCanvas
+                            layer="belowEmbeddables"
                             canvas={this.canvas}
                             rc={this.rc}
                             elementsMap={renderableElementsMap}
@@ -2816,33 +2827,11 @@ class App extends React.Component<AppProps, AppState> {
                               theme: this.state.theme,
                             }}
                           />
-                          {newElementCanvasElement && (
-                            <NewElementCanvas
-                              appState={this.state}
-                              newElement={newElementCanvasElement}
-                              scale={window.devicePixelRatio}
-                              rc={this.rc}
-                              elementsMap={renderableElementsMap}
-                              allElementsMap={allElementsMap}
-                              renderConfig={{
-                                imageCache: this.imageCache,
-                                isExporting: false,
-                                renderGrid: false,
-                                canvasBackgroundColor:
-                                  this.state.viewBackgroundColor,
-                                embedsValidationStatus:
-                                  this.embedsValidationStatus,
-                                elementsPendingErasure:
-                                  this.elementsPendingErasure,
-                                pendingFlowchartNodes: null,
-                                theme: this.state.theme,
-                              }}
-                            />
-                          )}
                           <InteractiveCanvas
                             app={this}
                             containerRef={this.excalidrawContainerRef}
                             canvas={this.interactiveCanvas}
+                            visualCanvas={this.interactiveVisualCanvas}
                             elementsMap={renderableElementsMap}
                             visibleElements={visibleElements}
                             allElementsMap={allElementsMap}
@@ -2890,6 +2879,71 @@ class App extends React.Component<AppProps, AppState> {
                           )}
                         </ExcalidrawActionManagerContext.Provider>
                         {this.renderEmbeddables()}
+                        {/* sdamex #5878: after the embeddables in the DOM and
+                            on the same z-index, so above them; transparent to
+                            the pointer, which goes to live embeddables or to
+                            the interactive canvas under them */}
+                        <div className="excalidraw__above-embeddables">
+                          {/* always mounted: it is repainted in the same
+                              pass as the static canvas, so an embeddable
+                              leaving the viewport cannot blank the elements
+                              above it for a frame; without embeddables it is
+                              only cleared */}
+                          <StaticCanvas
+                            layer="aboveEmbeddables"
+                            canvas={this.aboveEmbeddablesCanvas}
+                            rc={this.rc}
+                            elementsMap={renderableElementsMap}
+                            allElementsMap={allElementsMap}
+                            visibleElements={visibleElements}
+                            canvasNonce={staticCanvasNonce}
+                            selectionNonce={
+                              this.state.selectionElement?.versionNonce
+                            }
+                            scale={window.devicePixelRatio}
+                            appState={this.state}
+                            renderConfig={{
+                              imageCache: this.imageCache,
+                              isExporting: false,
+                              renderGrid: false,
+                              canvasBackgroundColor:
+                                this.state.viewBackgroundColor,
+                              embedsValidationStatus:
+                                this.embedsValidationStatus,
+                              elementsPendingErasure:
+                                this.elementsPendingErasure,
+                              pendingFlowchartNodes: null,
+                              theme: this.state.theme,
+                            }}
+                          />
+                          {newElementCanvasElement && (
+                            <NewElementCanvas
+                              appState={this.state}
+                              newElement={newElementCanvasElement}
+                              scale={window.devicePixelRatio}
+                              rc={this.rc}
+                              elementsMap={renderableElementsMap}
+                              allElementsMap={allElementsMap}
+                              renderConfig={{
+                                imageCache: this.imageCache,
+                                isExporting: false,
+                                renderGrid: false,
+                                canvasBackgroundColor:
+                                  this.state.viewBackgroundColor,
+                                embedsValidationStatus:
+                                  this.embedsValidationStatus,
+                                elementsPendingErasure:
+                                  this.elementsPendingErasure,
+                                pendingFlowchartNodes: null,
+                                theme: this.state.theme,
+                              }}
+                            />
+                          )}
+                          <div
+                            className="excalidraw__canvas-wrapper"
+                            ref={this.mountInteractiveVisualCanvas}
+                          />
+                        </div>
                       </ExcalidrawElementsContext.Provider>
                     </ExcalidrawAppStateContext.Provider>
                   </ExcalidrawSetAppStateContext.Provider>
@@ -14366,6 +14420,15 @@ class App extends React.Component<AppProps, AppState> {
       selectedLinearElement: null,
     });
   }
+
+  // sdamex #5878: the visible interactive canvas lives for the whole App, so
+  // `InteractiveCanvas` never paints the pointer target, not even on the
+  // first render; it sizes the canvas itself
+  private mountInteractiveVisualCanvas = (wrapper: HTMLDivElement | null) => {
+    if (wrapper && this.interactiveVisualCanvas.parentNode !== wrapper) {
+      wrapper.replaceChildren(this.interactiveVisualCanvas);
+    }
+  };
 
   private handleInteractiveCanvasRef = (canvas: HTMLCanvasElement | null) => {
     // canvas is null when unmounting

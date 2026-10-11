@@ -12,6 +12,7 @@ import {
   isIframeLikeElement,
   isTextElement,
 } from "@excalidraw/element";
+import { getCornerRadius } from "@excalidraw/element";
 import {
   elementOverlapsWithFrame,
   getTargetFrame,
@@ -259,6 +260,120 @@ const renderLinkIcon = (
     context.restore();
   }
 };
+/**
+ * sdamex #5878: one run of consecutive elements (in z-order) between two
+ * embeddables; `above` are the embeddables stacked over them.
+ */
+export type AboveEmbeddablesBand = {
+  above: readonly NonDeletedExcalidrawElement[];
+  elements: NonDeletedExcalidrawElement[];
+};
+
+const getFirstEmbeddableIndex = (
+  visibleElements: readonly NonDeletedExcalidrawElement[],
+) => visibleElements.findIndex((element) => isIframeLikeElement(element));
+
+/**
+ * sdamex #5878: elements the layer above the embeddables paints.
+ *
+ * Embeddables are DOM over the static canvas, so an element painted on the
+ * static canvas is hidden under every embeddable it overlaps. Every element
+ * stacked above the lowest visible embeddable is therefore painted on the
+ * layer over the embeddables' DOM instead (the static canvas skips them, see
+ * `layer: "belowEmbeddables"`). Each band is clipped to exclude the
+ * embeddables stacked over it, so an element keeps its z-order against every
+ * embeddable; plain elements keep their order among themselves, as all of
+ * the layer's elements are above all of the static canvas's.
+ */
+export const getAboveEmbeddablesBands = (
+  visibleElements: readonly NonDeletedExcalidrawElement[],
+): AboveEmbeddablesBand[] => {
+  const firstEmbeddableIndex = getFirstEmbeddableIndex(visibleElements);
+  if (firstEmbeddableIndex < 0) {
+    return [];
+  }
+  const embeddables = visibleElements.filter((element) =>
+    isIframeLikeElement(element),
+  );
+
+  const bands: AboveEmbeddablesBand[] = [];
+  let embeddablesBelow = 0;
+  let band: AboveEmbeddablesBand | null = null;
+  for (
+    let index = firstEmbeddableIndex;
+    index < visibleElements.length;
+    index++
+  ) {
+    const element = visibleElements[index];
+    if (isIframeLikeElement(element)) {
+      embeddablesBelow++;
+      band = null;
+      continue;
+    }
+    if (!band) {
+      band = { above: embeddables.slice(embeddablesBelow), elements: [] };
+      bands.push(band);
+    }
+    band.elements.push(element);
+  }
+  return bands;
+};
+
+/**
+ * sdamex #5878: adds the embeddable's DOM box (rotated around its center,
+ * with the corner radius of `.excalidraw__embeddable-container__inner`) to
+ * the current path, in the static scene's coordinates.
+ */
+const traceEmbeddableBox = (
+  context: CanvasRenderingContext2D,
+  element: NonDeletedExcalidrawElement,
+  appState: StaticCanvasAppState,
+) => {
+  const { width, height } = element;
+  context.save();
+  context.translate(
+    element.x + width / 2 + appState.scrollX,
+    element.y + height / 2 + appState.scrollY,
+  );
+  context.rotate(element.angle);
+  const radius = getCornerRadius(Math.min(width, height), element);
+  if (radius && context.roundRect) {
+    context.roundRect(-width / 2, -height / 2, width, height, radius);
+  } else {
+    context.rect(-width / 2, -height / 2, width, height);
+  }
+  context.restore();
+};
+
+const paintAboveEmbeddables = (
+  context: CanvasRenderingContext2D,
+  visibleElements: readonly NonDeletedExcalidrawElement[],
+  appState: StaticCanvasAppState,
+  normalizedWidth: number,
+  normalizedHeight: number,
+  paintElement: (element: NonDeletedExcalidrawElement) => void,
+) => {
+  const zoom = appState.zoom.value;
+  for (const band of getAboveEmbeddablesBands(visibleElements)) {
+    context.save();
+    // minus each embeddable over the band: the viewport with a hole
+    // (even-odd), one clip per embeddable since clips intersect
+    for (const embeddable of band.above) {
+      context.beginPath();
+      context.rect(
+        -1,
+        -1,
+        normalizedWidth / zoom + 2,
+        normalizedHeight / zoom + 2,
+      );
+      traceEmbeddableBox(context, embeddable, appState);
+      context.clip("evenodd");
+    }
+    band.elements.forEach(paintElement);
+    context.restore();
+  }
+};
+
 const paintStaticScene = ({
   canvas,
   rc,
@@ -268,12 +383,15 @@ const paintStaticScene = ({
   scale,
   appState,
   renderConfig,
+  layer,
 }: StaticSceneRenderConfig) => {
   if (canvas === null || !visibleElements) {
     return;
   }
 
-  const { renderGrid = true, isExporting } = renderConfig;
+  const { isExporting } = renderConfig;
+  const renderGrid =
+    layer === "aboveEmbeddables" ? false : renderConfig.renderGrid ?? true;
 
   const [normalizedWidth, normalizedHeight] = getNormalizedCanvasDimensions(
     canvas,
@@ -287,7 +405,11 @@ const paintStaticScene = ({
     normalizedHeight,
     theme: appState.theme,
     isExporting,
-    viewBackgroundColor: appState.viewBackgroundColor,
+    // sdamex #5878: the layer above the embeddables is transparent
+    viewBackgroundColor:
+      layer === "aboveEmbeddables"
+        ? "transparent"
+        : appState.viewBackgroundColor,
   });
 
   // Apply zoom
@@ -330,92 +452,120 @@ const paintStaticScene = ({
 
   const inFrameGroupsMap = new Map<string, boolean>();
 
-  // Paint visible elements
-  visibleElements
-    .filter((el) => !isIframeLikeElement(el))
-    .forEach((element) => {
-      try {
-        const frameId = element.frameId || appState.frameToHighlight?.id;
+  const paintElement = (element: NonDeletedExcalidrawElement) => {
+    try {
+      const frameId = element.frameId || appState.frameToHighlight?.id;
 
+      if (
+        isTextElement(element) &&
+        element.containerId &&
+        elementsMap.has(element.containerId)
+      ) {
+        // will be rendered with the container
+        return;
+      }
+
+      context.save();
+
+      if (
+        frameId &&
+        appState.frameRendering.enabled &&
+        appState.frameRendering.clip
+      ) {
+        const frame = getTargetFrame(element, elementsMap, appState);
         if (
-          isTextElement(element) &&
-          element.containerId &&
-          elementsMap.has(element.containerId)
-        ) {
-          // will be rendered with the container
-          return;
-        }
-
-        context.save();
-
-        if (
-          frameId &&
-          appState.frameRendering.enabled &&
-          appState.frameRendering.clip
-        ) {
-          const frame = getTargetFrame(element, elementsMap, appState);
-          if (
-            frame &&
-            shouldApplyFrameClip(
-              element,
-              frame,
-              appState,
-              elementsMap,
-              inFrameGroupsMap,
-            )
-          ) {
-            frameClip(frame, context, renderConfig, appState);
-          }
-          renderElement(
+          frame &&
+          shouldApplyFrameClip(
             element,
-            elementsMap,
-            allElementsMap,
-            rc,
-            context,
-            renderConfig,
+            frame,
             appState,
-          );
-        } else {
-          renderElement(
-            element,
             elementsMap,
-            allElementsMap,
-            rc,
-            context,
-            renderConfig,
-            appState,
-          );
+            inFrameGroupsMap,
+          )
+        ) {
+          frameClip(frame, context, renderConfig, appState);
         }
-
-        const boundTextElement = getBoundTextElement(element, elementsMap);
-        if (boundTextElement) {
-          renderElement(
-            boundTextElement,
-            elementsMap,
-            allElementsMap,
-            rc,
-            context,
-            renderConfig,
-            appState,
-          );
-        }
-
-        context.restore();
-
-        if (!isExporting) {
-          renderLinkIcon(element, context, appState, elementsMap);
-        }
-      } catch (error: any) {
-        console.error(
-          error,
-          element.id,
-          element.x,
-          element.y,
-          element.width,
-          element.height,
+        renderElement(
+          element,
+          elementsMap,
+          allElementsMap,
+          rc,
+          context,
+          renderConfig,
+          appState,
+        );
+      } else {
+        renderElement(
+          element,
+          elementsMap,
+          allElementsMap,
+          rc,
+          context,
+          renderConfig,
+          appState,
         );
       }
-    });
+
+      const boundTextElement = getBoundTextElement(element, elementsMap);
+      if (boundTextElement) {
+        renderElement(
+          boundTextElement,
+          elementsMap,
+          allElementsMap,
+          rc,
+          context,
+          renderConfig,
+          appState,
+        );
+      }
+
+      context.restore();
+
+      if (!isExporting) {
+        renderLinkIcon(element, context, appState, elementsMap);
+      }
+    } catch (error: any) {
+      console.error(
+        error,
+        element.id,
+        element.x,
+        element.y,
+        element.width,
+        element.height,
+      );
+    }
+  };
+
+  // sdamex #5878: the layer above the embeddables' DOM paints only the
+  // elements stacked above an embeddable, clipped to it (see
+  // `getAboveEmbeddablesBands`); no background, grid or embeddables
+  if (layer === "aboveEmbeddables") {
+    paintAboveEmbeddables(
+      context,
+      visibleElements,
+      appState,
+      normalizedWidth,
+      normalizedHeight,
+      paintElement,
+    );
+    return;
+  }
+
+  // sdamex #5878: under the embeddables' DOM, only elements stacked below the
+  // lowest visible embeddable; the rest is on the layer above them
+  const paintedElementsEnd =
+    layer === "belowEmbeddables" && !isExporting
+      ? getFirstEmbeddableIndex(visibleElements)
+      : -1;
+
+  // Paint visible elements
+  visibleElements
+    .filter(
+      (el, index) =>
+        !isIframeLikeElement(el) &&
+        (paintedElementsEnd < 0 || index < paintedElementsEnd),
+    )
+    .forEach(paintElement);
 
   // render embeddables on top
   visibleElements
@@ -659,4 +809,27 @@ export const renderStaticScene = (
   }
 
   _renderStaticScene(renderConfig);
+};
+
+/**
+ * sdamex #5878: the layer above the embeddables' DOM (see
+ * `getAboveEmbeddablesBands`). Throttled per canvas like the static scene;
+ * kept apart from `renderStaticScene` so static repaint counts stay the same.
+ */
+export const renderAboveEmbeddablesScene = (
+  renderConfig: Omit<StaticSceneRenderConfig, "layer">,
+  throttle?: boolean,
+) => {
+  const config: StaticSceneRenderConfig = {
+    ...renderConfig,
+    layer: "aboveEmbeddables",
+  };
+  cancelZoomRasterContinuation(config.canvas);
+
+  if (throttle) {
+    renderStaticSceneThrottled(config);
+    return;
+  }
+
+  _renderStaticScene(config);
 };

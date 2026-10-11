@@ -10,6 +10,7 @@ import type {
 import { isRenderThrottlingEnabled } from "../../reactUtils";
 import {
   cancelZoomRasterContinuation,
+  renderAboveEmbeddablesScene,
   renderStaticScene,
   renderStaticSceneThrottled,
 } from "../../renderer/staticScene";
@@ -32,6 +33,12 @@ type StaticCanvasProps = {
   scale: number;
   appState: StaticCanvasAppState;
   renderConfig: StaticCanvasRenderConfig;
+  /**
+   * sdamex #5878: `belowEmbeddables` is the editor's static canvas under the
+   * embeddables' DOM, `aboveEmbeddables` the transparent layer over them
+   * (`renderAboveEmbeddablesScene`). See `StaticSceneRenderConfig.layer`.
+   */
+  layer?: "belowEmbeddables" | "aboveEmbeddables";
 };
 
 const StaticCanvas = (props: StaticCanvasProps) => {
@@ -66,22 +73,30 @@ const StaticCanvas = (props: StaticCanvasProps) => {
       isComponentMounted.current = true;
 
       wrapper.replaceChildren(canvas);
-      canvas.classList.add("excalidraw__canvas", "static");
+      canvas.classList.add(
+        "excalidraw__canvas",
+        props.layer === "aboveEmbeddables" ? "above-embeddables" : "static",
+      );
     }
 
-    renderStaticScene(
-      {
-        canvas,
-        rc: props.rc,
-        scale: props.scale,
-        elementsMap: props.elementsMap,
-        allElementsMap: props.allElementsMap,
-        visibleElements: props.visibleElements,
-        appState: props.appState,
-        renderConfig: props.renderConfig,
-      },
-      isRenderThrottlingEnabled(),
-    );
+    const config = {
+      canvas,
+      rc: props.rc,
+      scale: props.scale,
+      elementsMap: props.elementsMap,
+      allElementsMap: props.allElementsMap,
+      visibleElements: props.visibleElements,
+      appState: props.appState,
+      renderConfig: props.renderConfig,
+    };
+    if (props.layer === "aboveEmbeddables") {
+      renderAboveEmbeddablesScene(config, isRenderThrottlingEnabled());
+    } else {
+      renderStaticScene(
+        props.layer ? { ...config, layer: props.layer } : config,
+        isRenderThrottlingEnabled(),
+      );
+    }
   });
 
   return <div className="excalidraw__canvas-wrapper" ref={wrapperRef} />;
@@ -134,7 +149,8 @@ const areEqual = (
     // instances with the same content (e.g. a remote batch that touched only
     // off-screen elements) therefore no longer repaint the static canvas.
     prevProps.canvasNonce !== nextProps.canvasNonce ||
-    prevProps.scale !== nextProps.scale
+    prevProps.scale !== nextProps.scale ||
+    prevProps.layer !== nextProps.layer
   ) {
     return false;
   }

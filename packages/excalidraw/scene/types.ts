@@ -86,6 +86,14 @@ export type StaticSceneRenderConfig = {
   scale: number;
   appState: StaticCanvasAppState;
   renderConfig: StaticCanvasRenderConfig;
+  /**
+   * sdamex #5878: the editor's canvases around the embeddables' DOM.
+   * `belowEmbeddables` (the static canvas) paints only elements stacked below
+   * the lowest visible embeddable; `aboveEmbeddables` (a transparent layer
+   * over the embeddables) paints the rest, each run clipped to exclude the
+   * embeddables stacked over it. Unset: everything (export).
+   */
+  layer?: "belowEmbeddables" | "aboveEmbeddables";
 };
 
 export type InteractiveSceneRenderAnimationState = {

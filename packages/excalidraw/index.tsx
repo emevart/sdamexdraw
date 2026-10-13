@@ -81,6 +81,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     renderTopLeftUI,
     renderTopRightUI,
     renderToolbarExtra,
+    renderToolbarInsert,
     langCode = defaultLang.code,
     viewModeEnabled,
     zenModeEnabled,
@@ -204,6 +205,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           renderTopLeftUI={renderTopLeftUI}
           renderTopRightUI={renderTopRightUI}
           renderToolbarExtra={renderToolbarExtra}
+          renderToolbarInsert={renderToolbarInsert}
           langCode={langCode}
           viewModeEnabled={viewModeEnabled}
           zenModeEnabled={zenModeEnabled}

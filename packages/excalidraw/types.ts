@@ -731,6 +731,17 @@ export interface ExcalidrawProps {
     isMobile: boolean,
     appState: UIAppState,
   ) => JSX.Element | null;
+  /**
+   * sdamex: host control in place of the image tool button (desktop toolbar
+   * and the phone bottom toolbar), e.g. an "Insert" menu that offers images
+   * among other materials. When set, the image tool button is not rendered;
+   * the image tool itself stays available (`setActiveTool({ type: "image" })`,
+   * drop and paste).
+   */
+  renderToolbarInsert?: (
+    isMobile: boolean,
+    appState: UIAppState,
+  ) => JSX.Element | null;
   langCode?: Language["code"];
   viewModeEnabled?: boolean;
   zenModeEnabled?: boolean;

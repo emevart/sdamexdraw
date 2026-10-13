@@ -304,6 +304,155 @@ IMAGE_ERROR_PLACEHOLDER_IMG.src = `data:${MIME_TYPES.svg},${encodeURIComponent(
   `<svg viewBox="0 0 668 668" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2"><path d="M464 448H48c-26.51 0-48-21.49-48-48V112c0-26.51 21.49-48 48-48h416c26.51 0 48 21.49 48 48v288c0 26.51-21.49 48-48 48ZM112 120c-30.928 0-56 25.072-56 56s25.072 56 56 56 56-25.072 56-56-25.072-56-56-56ZM64 384h384V272l-87.515-87.515c-4.686-4.686-12.284-4.686-16.971 0L208 320l-55.515-55.515c-4.686-4.686-12.284-4.686-16.971 0L64 336v48Z" style="fill:#888;fill-rule:nonzero" transform="matrix(.81709 0 0 .81709 124.825 145.825)"/><path d="M256 8C119.034 8 8 119.033 8 256c0 136.967 111.034 248 248 248s248-111.034 248-248S392.967 8 256 8Zm130.108 117.892c65.448 65.448 70 165.481 20.677 235.637L150.47 105.216c70.204-49.356 170.226-44.735 235.638 20.676ZM125.892 386.108c-65.448-65.448-70-165.481-20.677-235.637L361.53 406.784c-70.203 49.356-170.226 44.736-235.638-20.676Z" style="fill:#888;fill-rule:nonzero" transform="matrix(.30366 0 0 .30366 506.822 60.065)"/></svg>`,
 )}`;
 
+/**
+ * sdamex: host marker on an image element (`customData`). A raster that is a
+ * page of paper (a PDF page, emevart/billion-dollars#5713) is inverted in the
+ * dark theme like an SVG: ink drawn over it is inverted too, so on a white
+ * page it would be invisible.
+ */
+export const INVERT_IN_DARK_THEME_KEY = "sdamexInvertInDark";
+/**
+ * sdamex: host marker on an image element (`customData`): text drawn on the
+ * placeholder while the file is not loaded, instead of the image icon. The
+ * first line is a large title (a page number), the rest is a caption.
+ */
+export const IMAGE_PLACEHOLDER_LABEL_KEY = "sdamexPlaceholderLabel";
+
+export const shouldInvertImageInDarkTheme = (element: ExcalidrawElement) =>
+  element.customData?.[INVERT_IN_DARK_THEME_KEY] === true;
+
+/**
+ * Upper bound for the temporary canvas of the per-pixel inversion (Safari has no
+ * `context.filter`): ~4.2 MP, i.e. 16 MB of pixels, live only during one draw.
+ */
+export const MAX_INVERT_CANVAS_PIXELS = 2048 * 2048;
+
+/**
+ * Safari path of the dark-theme image inversion: inverts the pixels on a
+ * temporary canvas and draws it into the element box.
+ *
+ * sdamex emevart/billion-dollars#5713: the temporary canvas is sized by the real
+ * scale of the target context (zoom * devicePixelRatio, read from its transform)
+ * but never above the source pixels and `MAX_INVERT_CANVAS_PIXELS`, and its
+ * backing store is released right after the draw. A PDF page (800 px wide on a
+ * 3x phone) used to allocate ~32 MB per draw and keep it until GC, which on iOS
+ * Safari hits the total canvas memory limit with a few pages on the board.
+ */
+export const drawImageInvertedPerPixel = (
+  context: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  source: { x: number; y: number; width: number; height: number },
+  box: { width: number; height: number },
+) => {
+  const transform =
+    typeof context.getTransform === "function" ? context.getTransform() : null;
+  const contextScale =
+    (transform && Math.hypot(transform.a, transform.b)) ||
+    window.devicePixelRatio ||
+    1;
+  let targetWidth = Math.min(box.width * contextScale, source.width);
+  let targetHeight = Math.min(box.height * contextScale, source.height);
+  const pixels = targetWidth * targetHeight;
+  if (pixels > MAX_INVERT_CANVAS_PIXELS) {
+    const shrink = Math.sqrt(MAX_INVERT_CANVAS_PIXELS / pixels);
+    targetWidth *= shrink;
+    targetHeight *= shrink;
+  }
+  targetWidth = Math.max(1, Math.round(targetWidth));
+  targetHeight = Math.max(1, Math.round(targetHeight));
+
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = targetWidth;
+  tempCanvas.height = targetHeight;
+  try {
+    const tempContext = tempCanvas.getContext("2d");
+    if (!tempContext) {
+      return;
+    }
+    tempContext.drawImage(
+      img,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+    );
+    const imageData = tempContext.getImageData(0, 0, targetWidth, targetHeight);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 255 - data[i];
+      data[i + 1] = 255 - data[i + 1];
+      data[i + 2] = 255 - data[i + 2];
+    }
+    tempContext.putImageData(imageData, 0, 0);
+    context.drawImage(
+      tempCanvas,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+      0,
+      0,
+      box.width,
+      box.height,
+    );
+  } finally {
+    // Release the backing store now instead of at GC (iOS canvas memory cap).
+    tempCanvas.width = 0;
+    tempCanvas.height = 0;
+  }
+};
+
+const getImagePlaceholderLabel = (
+  element: ExcalidrawImageElement,
+): string[] | null => {
+  const label = element.customData?.[IMAGE_PLACEHOLDER_LABEL_KEY];
+  if (typeof label !== "string" || !label.trim()) {
+    return null;
+  }
+  return label.split("\n").slice(0, 3);
+};
+
+const drawImagePlaceholderLabel = (
+  element: ExcalidrawImageElement,
+  context: CanvasRenderingContext2D,
+  theme: StaticCanvasRenderConfig["theme"],
+  lines: string[],
+) => {
+  const isDark = theme === THEME.DARK;
+  const inset = Math.min(16, Math.min(element.width, element.height) / 10);
+  context.strokeStyle = isDark ? "#5A5A5A" : "#C4C4C4";
+  context.lineWidth = Math.max(1, inset / 8);
+  context.setLineDash([inset / 2, inset / 2]);
+  context.strokeRect(
+    inset,
+    inset,
+    element.width - inset * 2,
+    element.height - inset * 2,
+  );
+  context.setLineDash([]);
+
+  const titleSize = Math.max(12, Math.min(element.width / 6, 96));
+  const captionSize = Math.max(10, titleSize / 3);
+  const [title, ...caption] = lines;
+  const totalHeight = titleSize + caption.length * captionSize * 1.4;
+  let y = element.height / 2 - totalHeight / 2;
+  context.textAlign = "center";
+  context.textBaseline = "top";
+  context.fillStyle = isDark ? "#B8B8B8" : "#6B6B6B";
+  context.font = `600 ${titleSize}px sans-serif`;
+  context.fillText(title, element.width / 2, y, element.width - inset * 4);
+  y += titleSize * 1.2;
+  context.font = `${captionSize}px sans-serif`;
+  for (const line of caption) {
+    context.fillText(line, element.width / 2, y, element.width - inset * 4);
+    y += captionSize * 1.4;
+  }
+};
+
 const drawImagePlaceholder = (
   element: ExcalidrawImageElement,
   context: CanvasRenderingContext2D,
@@ -311,6 +460,13 @@ const drawImagePlaceholder = (
 ) => {
   context.fillStyle = theme === THEME.DARK ? "#2E2E2E" : "#E7E7E7";
   context.fillRect(0, 0, element.width, element.height);
+
+  const label =
+    element.status === "error" ? null : getImagePlaceholderLabel(element);
+  if (label) {
+    drawImagePlaceholderLabel(element, context, theme, label);
+    return;
+  }
 
   const imageMinWidthOrHeight = Math.min(element.width, element.height);
 
@@ -445,57 +601,16 @@ const drawElementOnCanvas = (
 
         const shouldInvertImage =
           renderConfig.theme === THEME.DARK &&
-          cacheEntry?.mimeType === MIME_TYPES.svg;
+          (cacheEntry?.mimeType === MIME_TYPES.svg ||
+            shouldInvertImageInDarkTheme(element));
 
         if (shouldInvertImage && isSafari) {
-          const devicePixelRatio = window.devicePixelRatio || 1;
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = element.width * devicePixelRatio;
-          tempCanvas.height = element.height * devicePixelRatio;
-          const tempContext = tempCanvas.getContext("2d");
-
-          if (tempContext) {
-            tempContext.scale(devicePixelRatio, devicePixelRatio);
-            tempContext.drawImage(
-              img,
-              x,
-              y,
-              width,
-              height,
-              0,
-              0,
-              element.width,
-              element.height,
-            );
-
-            const imageData = tempContext.getImageData(
-              0,
-              0,
-              tempCanvas.width,
-              tempCanvas.height,
-            );
-
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = 255 - data[i];
-              data[i + 1] = 255 - data[i + 1];
-              data[i + 2] = 255 - data[i + 2];
-            }
-
-            tempContext.putImageData(imageData, 0, 0);
-            context.drawImage(
-              tempCanvas,
-              0,
-              0,
-              tempCanvas.width,
-              tempCanvas.height,
-              0,
-              0,
-              element.width,
-              element.height,
-            );
-          }
+          drawImageInvertedPerPixel(
+            context,
+            img,
+            { x, y, width, height },
+            element,
+          );
         } else {
           if (shouldInvertImage) {
             context.filter = DARK_THEME_FILTER;

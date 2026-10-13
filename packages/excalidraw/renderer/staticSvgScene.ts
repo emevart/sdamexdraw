@@ -22,6 +22,7 @@ import { LinearElementEditor } from "@excalidraw/element";
 import { getBoundTextElement, getContainerElement } from "@excalidraw/element";
 import { getLineHeightInPx } from "@excalidraw/element";
 import { getTextInlineHooks } from "@excalidraw/element";
+import { shouldInvertImageInDarkTheme } from "@excalidraw/element";
 import {
   isArrowElement,
   isIframeLikeElement,
@@ -557,7 +558,8 @@ const renderElementToSvg = (
 
         if (
           renderConfig.theme === THEME.DARK &&
-          fileData.mimeType === MIME_TYPES.svg
+          (fileData.mimeType === MIME_TYPES.svg ||
+            shouldInvertImageInDarkTheme(element))
         ) {
           g.setAttribute("filter", DARK_THEME_FILTER);
         }

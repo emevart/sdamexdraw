@@ -8,8 +8,10 @@ import {
   THEME,
 } from "@excalidraw/common";
 import {
+  drawImageInvertedPerPixel,
   IMAGE_PLACEHOLDER_LABEL_KEY,
   INVERT_IN_DARK_THEME_KEY,
+  MAX_INVERT_CANVAS_PIXELS,
   renderElement,
 } from "@excalidraw/element";
 
@@ -172,6 +174,90 @@ describe("image invert marker (sdamex)", () => {
     expect(await exportSvgMarkup(imageElement(), true)).not.toContain(
       DARK_THEME_FILTER,
     );
+  });
+});
+
+describe("per-pixel invert, Safari path (sdamex)", () => {
+  /** Runs the helper on a context with the given scale; returns the temp canvas. */
+  const invertWithScale = (
+    scale: number,
+    source: { width: number; height: number },
+    box: { width: number; height: number },
+  ) => {
+    const target = document.createElement("canvas");
+    target.width = 4000;
+    target.height = 4000;
+    const context = target.getContext("2d")!;
+    context.scale(scale, scale);
+    const image = document.createElement("img");
+    const created: HTMLCanvasElement[] = [];
+    const createElement = document.createElement.bind(document);
+    const spy = vi
+      .spyOn(document, "createElement")
+      .mockImplementation((tag: string, options?: ElementCreationOptions) => {
+        const element = createElement(tag, options);
+        if (tag === "canvas") {
+          created.push(element as HTMLCanvasElement);
+        }
+        return element;
+      });
+    const drawImage = vi.spyOn(context, "drawImage");
+    try {
+      drawImageInvertedPerPixel(context, image, { x: 0, y: 0, ...source }, box);
+    } finally {
+      spy.mockRestore();
+    }
+    // Last draw on the target: (temp, 0, 0, tempW, tempH, 0, 0, boxW, boxH).
+    const last = drawImage.mock.calls.at(-1)!;
+    return {
+      temp: created[0],
+      drawnFrom: [last[3], last[4]] as number[],
+      drawnTo: [last[7], last[8]] as number[],
+    };
+  };
+
+  it("sizes the temp canvas by the context scale, capped by the source", () => {
+    // Page 400 px wide on screen at 2x: 800 device px, source has 1600.
+    expect(
+      invertWithScale(
+        2,
+        { width: 1600, height: 2264 },
+        {
+          width: 400,
+          height: 566,
+        },
+      ).drawnFrom,
+    ).toEqual([800, 1132]);
+    // Zoomed in to 3x on a 3x phone: never above the source pixels.
+    const zoomed = invertWithScale(
+      9,
+      { width: 1600, height: 2264 },
+      { width: 400, height: 566 },
+    );
+    expect(zoomed.drawnFrom).toEqual([1600, 2264]);
+    expect(zoomed.drawnTo).toEqual([400, 566]);
+  });
+
+  it("caps the temp canvas pixels", () => {
+    const { drawnFrom } = invertWithScale(
+      1,
+      { width: 4000, height: 4000 },
+      { width: 4000, height: 4000 },
+    );
+    expect(drawnFrom[0] * drawnFrom[1]).toBeLessThanOrEqual(
+      MAX_INVERT_CANVAS_PIXELS + 2 * drawnFrom[0],
+    );
+    expect(drawnFrom[0]).toBe(2048);
+  });
+
+  it("releases the temp canvas right after the draw", () => {
+    const { temp } = invertWithScale(
+      2,
+      { width: 1600, height: 2264 },
+      { width: 400, height: 566 },
+    );
+    expect(temp.width).toBe(0);
+    expect(temp.height).toBe(0);
   });
 });
 

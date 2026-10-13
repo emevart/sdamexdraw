@@ -321,6 +321,91 @@ export const IMAGE_PLACEHOLDER_LABEL_KEY = "sdamexPlaceholderLabel";
 export const shouldInvertImageInDarkTheme = (element: ExcalidrawElement) =>
   element.customData?.[INVERT_IN_DARK_THEME_KEY] === true;
 
+/**
+ * Upper bound for the temporary canvas of the per-pixel inversion (Safari has no
+ * `context.filter`): ~4.2 MP, i.e. 16 MB of pixels, live only during one draw.
+ */
+export const MAX_INVERT_CANVAS_PIXELS = 2048 * 2048;
+
+/**
+ * Safari path of the dark-theme image inversion: inverts the pixels on a
+ * temporary canvas and draws it into the element box.
+ *
+ * sdamex emevart/billion-dollars#5713: the temporary canvas is sized by the real
+ * scale of the target context (zoom * devicePixelRatio, read from its transform)
+ * but never above the source pixels and `MAX_INVERT_CANVAS_PIXELS`, and its
+ * backing store is released right after the draw. A PDF page (800 px wide on a
+ * 3x phone) used to allocate ~32 MB per draw and keep it until GC, which on iOS
+ * Safari hits the total canvas memory limit with a few pages on the board.
+ */
+export const drawImageInvertedPerPixel = (
+  context: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  source: { x: number; y: number; width: number; height: number },
+  box: { width: number; height: number },
+) => {
+  const transform =
+    typeof context.getTransform === "function" ? context.getTransform() : null;
+  const contextScale =
+    (transform && Math.hypot(transform.a, transform.b)) ||
+    window.devicePixelRatio ||
+    1;
+  let targetWidth = Math.min(box.width * contextScale, source.width);
+  let targetHeight = Math.min(box.height * contextScale, source.height);
+  const pixels = targetWidth * targetHeight;
+  if (pixels > MAX_INVERT_CANVAS_PIXELS) {
+    const shrink = Math.sqrt(MAX_INVERT_CANVAS_PIXELS / pixels);
+    targetWidth *= shrink;
+    targetHeight *= shrink;
+  }
+  targetWidth = Math.max(1, Math.round(targetWidth));
+  targetHeight = Math.max(1, Math.round(targetHeight));
+
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = targetWidth;
+  tempCanvas.height = targetHeight;
+  try {
+    const tempContext = tempCanvas.getContext("2d");
+    if (!tempContext) {
+      return;
+    }
+    tempContext.drawImage(
+      img,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+    );
+    const imageData = tempContext.getImageData(0, 0, targetWidth, targetHeight);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 255 - data[i];
+      data[i + 1] = 255 - data[i + 1];
+      data[i + 2] = 255 - data[i + 2];
+    }
+    tempContext.putImageData(imageData, 0, 0);
+    context.drawImage(
+      tempCanvas,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+      0,
+      0,
+      box.width,
+      box.height,
+    );
+  } finally {
+    // Release the backing store now instead of at GC (iOS canvas memory cap).
+    tempCanvas.width = 0;
+    tempCanvas.height = 0;
+  }
+};
+
 const getImagePlaceholderLabel = (
   element: ExcalidrawImageElement,
 ): string[] | null => {
@@ -520,54 +605,12 @@ const drawElementOnCanvas = (
             shouldInvertImageInDarkTheme(element));
 
         if (shouldInvertImage && isSafari) {
-          const devicePixelRatio = window.devicePixelRatio || 1;
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = element.width * devicePixelRatio;
-          tempCanvas.height = element.height * devicePixelRatio;
-          const tempContext = tempCanvas.getContext("2d");
-
-          if (tempContext) {
-            tempContext.scale(devicePixelRatio, devicePixelRatio);
-            tempContext.drawImage(
-              img,
-              x,
-              y,
-              width,
-              height,
-              0,
-              0,
-              element.width,
-              element.height,
-            );
-
-            const imageData = tempContext.getImageData(
-              0,
-              0,
-              tempCanvas.width,
-              tempCanvas.height,
-            );
-
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = 255 - data[i];
-              data[i + 1] = 255 - data[i + 1];
-              data[i + 2] = 255 - data[i + 2];
-            }
-
-            tempContext.putImageData(imageData, 0, 0);
-            context.drawImage(
-              tempCanvas,
-              0,
-              0,
-              tempCanvas.width,
-              tempCanvas.height,
-              0,
-              0,
-              element.width,
-              element.height,
-            );
-          }
+          drawImageInvertedPerPixel(
+            context,
+            img,
+            { x, y, width, height },
+            element,
+          );
         } else {
           if (shouldInvertImage) {
             context.filter = DARK_THEME_FILTER;

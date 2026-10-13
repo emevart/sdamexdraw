@@ -19,6 +19,7 @@ Please add the latest change on the top under the correct section.
 - Метки хоста на картинке (`customData`), константы в `@excalidraw/element`:
   - `sdamexInvertInDark: true` (`INVERT_IN_DARK_THEME_KEY`, `shouldInvertImageInDarkTheme`) — растр в тёмной теме перекрашивается так же, как SVG (`DARK_THEME_FILTER`; в Safari — попиксельно, как у SVG), на холсте и в SVG-экспорте. Для страниц бумаги: штрихи в тёмной теме светлеют, и на белой странице записи пера пропадали;
   - `sdamexPlaceholderLabel` (`IMAGE_PLACEHOLDER_LABEL_KEY`) — подпись заглушки, пока файла нет: первая строка крупно, следующие (до двух) — пояснение, вместо значка картинки; заглушка ошибки (`status: "error"`) прежняя.
+- Инверсия картинки в тёмной теме в Safari (`drawImageInvertedPerPixel`, общий путь SVG и помеченных растров): временный холст по реальному масштабу вывода (масштаб контекста — зум и `devicePixelRatio`), не больше пикселей источника и `MAX_INVERT_CANVAS_PIXELS` (4 Мп), и освобождается сразу после отрисовки. Прежде холст был `devicePixelRatio` x размер элемента на каждую отрисовку и жил до сборки мусора: страница 800 px на телефоне 3x — около 32 МБ, в iOS Safari несколько страниц упирались в общий предел памяти холстов.
 - Тесты: `tests/hostImageMarkers.test.tsx`.
 
 ## 0.30.12 (2026-10-11)

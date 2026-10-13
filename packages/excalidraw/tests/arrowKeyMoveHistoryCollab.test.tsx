@@ -16,7 +16,7 @@ const { h } = window;
 /**
  * Remote delivery the way the SdamEx host applies it: reconcileElements
  * against the local scene, then updateScene with CaptureUpdateAction.NEVER
- * (excalidraw-canvas.tsx, Yjs observer and peer-preview paths).
+ * (excalidraw-canvas.tsx, Yjs observer and WS paths).
  */
 const deliverRemote = (remote: readonly unknown[]) => {
   const reconciled = reconcileElements(
@@ -29,6 +29,23 @@ const deliverRemote = (remote: readonly unknown[]) => {
     captureUpdate: CaptureUpdateAction.NEVER,
   });
 };
+
+/**
+ * A peer's live stroke preview the way the host renders it: the current scene
+ * objects plus the preview, NEVER, without reconcileElements.
+ */
+const deliverPreview = (preview: readonly unknown[]) => {
+  API.updateScene({
+    elements: [
+      ...h.app.scene.getElementsIncludingDeleted(),
+      ...(preview as RemoteExcalidrawElement[]),
+    ],
+    captureUpdate: CaptureUpdateAction.NEVER,
+  });
+};
+
+const isLive = (id: string) =>
+  h.elements.some((el) => el.id === id && !el.isDeleted);
 
 const mouse = new Pointer("mouse");
 
@@ -93,6 +110,7 @@ describe("arrow-key moves in history with collab traffic (sdamex #5050)", () => 
     Keyboard.keyDown(KEYS.ARROW_RIGHT);
     Keyboard.keyDown(KEYS.ARROW_RIGHT);
     deliverRemote([peerRect("peer-1", 400)]);
+    expect(isLive("peer-1")).toBe(true);
     Keyboard.keyDown(KEYS.ARROW_RIGHT);
     Keyboard.keyUp(KEYS.ARROW_RIGHT);
 
@@ -113,6 +131,36 @@ describe("arrow-key moves in history with collab traffic (sdamex #5050)", () => 
     deliverRemote([stale]);
     Keyboard.keyUp(KEYS.ARROW_RIGHT);
     expect(rect.get().x).toBe(x0 + ELEMENT_TRANSLATE_AMOUNT);
+
+    Keyboard.undo();
+    expect(rect.get().x).toBe(x0);
+    expect(rect.get().isDeleted).toBe(false);
+  });
+
+  it("a remote element on the same index re-indexes the shape in place mid-hold", () => {
+    const rect = drawRect();
+    const x0 = rect.get().x;
+
+    Keyboard.keyDown(KEYS.ARROW_RIGHT);
+    // syncInvalidIndices in reconcileElements bumps the local shape's version
+    // on the scene object itself
+    deliverRemote([{ ...peerRect("peer-1", 400), index: rect.get().index }]);
+    expect(isLive("peer-1")).toBe(true);
+    Keyboard.keyUp(KEYS.ARROW_RIGHT);
+
+    Keyboard.undo();
+    expect(rect.get().x).toBe(x0);
+    expect(rect.get().isDeleted).toBe(false);
+  });
+
+  it("a peer stroke preview mid-hold does not swallow the move", () => {
+    const rect = drawRect();
+    const x0 = rect.get().x;
+
+    Keyboard.keyDown(KEYS.ARROW_RIGHT);
+    deliverPreview([peerRect("peer-preview", 400)]);
+    expect(isLive("peer-preview")).toBe(true);
+    Keyboard.keyUp(KEYS.ARROW_RIGHT);
 
     Keyboard.undo();
     expect(rect.get().x).toBe(x0);

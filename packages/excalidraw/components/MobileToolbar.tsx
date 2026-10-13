@@ -286,18 +286,22 @@ export const MobileToolbar = ({
           onChange={() => handleToolChange("text")}
         />
 
-        {/* Image */}
-        <ToolButton
-          className={clsx({ active: activeTool.type === "image" })}
-          type="radio"
-          icon={ImageIcon}
-          checked={activeTool.type === "image"}
-          name="editor-current-shape"
-          title={capitalizeString(t("toolBar.image"))}
-          aria-label={capitalizeString(t("toolBar.image"))}
-          data-testid="toolbar-image"
-          onChange={() => handleToolChange("image")}
-        />
+        {/* Image; sdamex: or the host's insert control in its place */}
+        {app.props.renderToolbarInsert ? (
+          app.props.renderToolbarInsert(true, app.state)
+        ) : (
+          <ToolButton
+            className={clsx({ active: activeTool.type === "image" })}
+            type="radio"
+            icon={ImageIcon}
+            checked={activeTool.type === "image"}
+            name="editor-current-shape"
+            title={capitalizeString(t("toolBar.image"))}
+            aria-label={capitalizeString(t("toolBar.image"))}
+            data-testid="toolbar-image"
+            onChange={() => handleToolChange("image")}
+          />
+        )}
 
         {app.props.renderToolbarExtra?.(true, app.state)}
 

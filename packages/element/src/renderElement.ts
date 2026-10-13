@@ -304,6 +304,70 @@ IMAGE_ERROR_PLACEHOLDER_IMG.src = `data:${MIME_TYPES.svg},${encodeURIComponent(
   `<svg viewBox="0 0 668 668" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2"><path d="M464 448H48c-26.51 0-48-21.49-48-48V112c0-26.51 21.49-48 48-48h416c26.51 0 48 21.49 48 48v288c0 26.51-21.49 48-48 48ZM112 120c-30.928 0-56 25.072-56 56s25.072 56 56 56 56-25.072 56-56-25.072-56-56-56ZM64 384h384V272l-87.515-87.515c-4.686-4.686-12.284-4.686-16.971 0L208 320l-55.515-55.515c-4.686-4.686-12.284-4.686-16.971 0L64 336v48Z" style="fill:#888;fill-rule:nonzero" transform="matrix(.81709 0 0 .81709 124.825 145.825)"/><path d="M256 8C119.034 8 8 119.033 8 256c0 136.967 111.034 248 248 248s248-111.034 248-248S392.967 8 256 8Zm130.108 117.892c65.448 65.448 70 165.481 20.677 235.637L150.47 105.216c70.204-49.356 170.226-44.735 235.638 20.676ZM125.892 386.108c-65.448-65.448-70-165.481-20.677-235.637L361.53 406.784c-70.203 49.356-170.226 44.736-235.638-20.676Z" style="fill:#888;fill-rule:nonzero" transform="matrix(.30366 0 0 .30366 506.822 60.065)"/></svg>`,
 )}`;
 
+/**
+ * sdamex: host marker on an image element (`customData`). A raster that is a
+ * page of paper (a PDF page, emevart/billion-dollars#5713) is inverted in the
+ * dark theme like an SVG: ink drawn over it is inverted too, so on a white
+ * page it would be invisible.
+ */
+export const INVERT_IN_DARK_THEME_KEY = "sdamexInvertInDark";
+/**
+ * sdamex: host marker on an image element (`customData`): text drawn on the
+ * placeholder while the file is not loaded, instead of the image icon. The
+ * first line is a large title (a page number), the rest is a caption.
+ */
+export const IMAGE_PLACEHOLDER_LABEL_KEY = "sdamexPlaceholderLabel";
+
+export const shouldInvertImageInDarkTheme = (element: ExcalidrawElement) =>
+  element.customData?.[INVERT_IN_DARK_THEME_KEY] === true;
+
+const getImagePlaceholderLabel = (
+  element: ExcalidrawImageElement,
+): string[] | null => {
+  const label = element.customData?.[IMAGE_PLACEHOLDER_LABEL_KEY];
+  if (typeof label !== "string" || !label.trim()) {
+    return null;
+  }
+  return label.split("\n").slice(0, 3);
+};
+
+const drawImagePlaceholderLabel = (
+  element: ExcalidrawImageElement,
+  context: CanvasRenderingContext2D,
+  theme: StaticCanvasRenderConfig["theme"],
+  lines: string[],
+) => {
+  const isDark = theme === THEME.DARK;
+  const inset = Math.min(16, Math.min(element.width, element.height) / 10);
+  context.strokeStyle = isDark ? "#5A5A5A" : "#C4C4C4";
+  context.lineWidth = Math.max(1, inset / 8);
+  context.setLineDash([inset / 2, inset / 2]);
+  context.strokeRect(
+    inset,
+    inset,
+    element.width - inset * 2,
+    element.height - inset * 2,
+  );
+  context.setLineDash([]);
+
+  const titleSize = Math.max(12, Math.min(element.width / 6, 96));
+  const captionSize = Math.max(10, titleSize / 3);
+  const [title, ...caption] = lines;
+  const totalHeight = titleSize + caption.length * captionSize * 1.4;
+  let y = element.height / 2 - totalHeight / 2;
+  context.textAlign = "center";
+  context.textBaseline = "top";
+  context.fillStyle = isDark ? "#B8B8B8" : "#6B6B6B";
+  context.font = `600 ${titleSize}px sans-serif`;
+  context.fillText(title, element.width / 2, y, element.width - inset * 4);
+  y += titleSize * 1.2;
+  context.font = `${captionSize}px sans-serif`;
+  for (const line of caption) {
+    context.fillText(line, element.width / 2, y, element.width - inset * 4);
+    y += captionSize * 1.4;
+  }
+};
+
 const drawImagePlaceholder = (
   element: ExcalidrawImageElement,
   context: CanvasRenderingContext2D,
@@ -311,6 +375,13 @@ const drawImagePlaceholder = (
 ) => {
   context.fillStyle = theme === THEME.DARK ? "#2E2E2E" : "#E7E7E7";
   context.fillRect(0, 0, element.width, element.height);
+
+  const label =
+    element.status === "error" ? null : getImagePlaceholderLabel(element);
+  if (label) {
+    drawImagePlaceholderLabel(element, context, theme, label);
+    return;
+  }
 
   const imageMinWidthOrHeight = Math.min(element.width, element.height);
 
@@ -445,7 +516,8 @@ const drawElementOnCanvas = (
 
         const shouldInvertImage =
           renderConfig.theme === THEME.DARK &&
-          cacheEntry?.mimeType === MIME_TYPES.svg;
+          (cacheEntry?.mimeType === MIME_TYPES.svg ||
+            shouldInvertImageInDarkTheme(element));
 
         if (shouldInvertImage && isSafari) {
           const devicePixelRatio = window.devicePixelRatio || 1;

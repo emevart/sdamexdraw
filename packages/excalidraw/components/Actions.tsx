@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
 
 import {
@@ -1309,6 +1309,15 @@ export const ShapesSwitcher = ({
             ] === false
           ) {
             return null;
+          }
+
+          // sdamex: the host's insert control takes the image tool's place
+          if (value === "image" && app.props.renderToolbarInsert) {
+            return (
+              <Fragment key="host-insert">
+                {app.props.renderToolbarInsert(false, app.state)}
+              </Fragment>
+            );
           }
 
           const label = t(`toolBar.${value}`);

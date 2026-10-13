@@ -11,6 +11,16 @@ The change should be grouped under one of the below section and must contain PR 
 Please add the latest change on the top under the correct section.
 -->
 
+## 0.30.13 (2026-10-13)
+
+### Features
+
+- Проп `renderToolbarInsert?: (isMobile, appState) => JSX.Element | null` (emevart/billion-dollars#5713): контрол хоста на месте кнопки «Картинка» — на панели компьютера (между «Текстом» и ластиком) и в нижней панели телефона. С пропом кнопка картинки не рисуется; сам инструмент остаётся (`setActiveTool({ type: "image" })`, перетаскивание и вставка картинок). Без пропа панель прежняя.
+- Метки хоста на картинке (`customData`), константы в `@excalidraw/element`:
+  - `sdamexInvertInDark: true` (`INVERT_IN_DARK_THEME_KEY`, `shouldInvertImageInDarkTheme`) — растр в тёмной теме перекрашивается так же, как SVG (`DARK_THEME_FILTER`; в Safari — попиксельно, как у SVG), на холсте и в SVG-экспорте. Для страниц бумаги: штрихи в тёмной теме светлеют, и на белой странице записи пера пропадали;
+  - `sdamexPlaceholderLabel` (`IMAGE_PLACEHOLDER_LABEL_KEY`) — подпись заглушки, пока файла нет: первая строка крупно, следующие (до двух) — пояснение, вместо значка картинки; заглушка ошибки (`status: "error"`) прежняя.
+- Тесты: `tests/hostImageMarkers.test.tsx`.
+
 ## 0.30.12 (2026-10-11)
 
 ### Features

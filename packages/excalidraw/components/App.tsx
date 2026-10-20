@@ -4303,6 +4303,20 @@ class App extends React.Component<AppProps, AppState> {
     }));
   }
 
+  /** #6907: жест закончен или прерван -- снимок выделения больше не нужен. */
+  private static clearTouchGestureSelection() {
+    touchGestureSelection = null;
+    touchGestureWasMultiTouch = false;
+  }
+
+  private onTouchCancel = (event: TouchEvent) => {
+    // #6907: прерванный системой жест не должен оставить снимок, иначе
+    // следующий touchend (в том числе от Apple Pencil) откатит выделение.
+    if (event.touches.length === 0) {
+      App.clearTouchGestureSelection();
+    }
+  };
+
   private static resetTapTwice() {
     didTapTwice = false;
     firstTapPosition = null;
@@ -4432,6 +4446,8 @@ class App extends React.Component<AppProps, AppState> {
               // Second two-finger tap → undo
               lastTwoFingerTapTime = 0;
               twoFingerTouchStart = null;
+              // #6907: undo сам задаёт выделение; снимок жеста устарел
+              App.clearTouchGestureSelection();
               this.actionManager.executeAction(this.undoAction, "ui");
               return;
             }
@@ -4457,8 +4473,7 @@ class App extends React.Component<AppProps, AppState> {
     } else {
       gesture.pointers.clear();
       activePenPointerIds.clear();
-      touchGestureSelection = null;
-      touchGestureWasMultiTouch = false;
+      App.clearTouchGestureSelection();
     }
 
     // пальцев меньше двух -- touch-путь больше не ведёт жест
@@ -6679,13 +6694,10 @@ class App extends React.Component<AppProps, AppState> {
   private onGestureStart = withBatchedUpdates((event: GestureEvent) => {
     event.preventDefault();
 
-    // we only want to deselect on touch screens because user may have selected
-    // elements by mistake while zooming
+    // #6907: pinch на сенсорном экране не меняет выделение (раньше здесь
+    // оно обнулялось и на iOS мигало до восстановления в onTouchEnd)
     if (this.isTouchScreenMultiTouchGesture()) {
-      this.setState({
-        selectedElementIds: makeNextSelectedElementIds({}, this.state),
-        activeEmbeddable: null,
-      });
+      this.setState({ activeEmbeddable: null });
     }
     gesture.initialScale = this.state.zoom.value;
   });
@@ -9027,6 +9039,9 @@ class App extends React.Component<AppProps, AppState> {
 
     if (event.pointerType === "pen") {
       activePenPointerIds.add(event.pointerId);
+      // #6907: перо начинает своё действие; снимок жеста пальцами устарел, а
+      // touchend от Apple Pencil (touchType "stylus") не должен его вернуть
+      App.clearTouchGestureSelection();
     } else if (event.pointerType === "touch" && activePenPointerIds.size > 0) {
       // Palm rejection: while a pen is on the surface, touch contacts are
       // palm. Ignore them entirely -- they must not cancel the ongoing pen
@@ -9848,7 +9863,13 @@ class App extends React.Component<AppProps, AppState> {
             this.setState((prevState) => ({
               ...selectGroupsForSelectedElements(
                 {
-                  editingGroupId: null,
+                  // внутри редактируемой группы тап выделяет элемент группы
+                  // и не выходит из редактирования -- как клик на ПК
+                  editingGroupId:
+                    prevState.editingGroupId &&
+                    isElementInGroup(hitElement, prevState.editingGroupId)
+                      ? prevState.editingGroupId
+                      : null,
                   selectedElementIds: { [hitElement.id]: true },
                 },
                 this.scene.getNonDeletedElements(),
@@ -14512,6 +14533,10 @@ class App extends React.Component<AppProps, AppState> {
         { passive: false },
       );
       this.interactiveCanvas.addEventListener(EVENT.TOUCH_END, this.onTouchEnd);
+      this.interactiveCanvas.addEventListener(
+        EVENT.TOUCH_CANCEL,
+        this.onTouchCancel,
+      );
       // -----------------------------------------------------------------------
     } else {
       this.interactiveCanvas?.removeEventListener(
@@ -14521,6 +14546,10 @@ class App extends React.Component<AppProps, AppState> {
       this.interactiveCanvas?.removeEventListener(
         EVENT.TOUCH_END,
         this.onTouchEnd,
+      );
+      this.interactiveCanvas?.removeEventListener(
+        EVENT.TOUCH_CANCEL,
+        this.onTouchCancel,
       );
     }
   };

@@ -317,3 +317,131 @@ describe("#6907 короткий тап указателем выделяет э
     expect(selectedIds()).toEqual([]);
   });
 });
+
+const stylusTouch = (x: number, y: number) =>
+  ({
+    identifier: 9,
+    clientX: x,
+    clientY: y,
+    touchType: "stylus",
+  } as unknown as Touch);
+
+/** касание Apple Pencil: pointer "pen" + touch-события с touchType "stylus" */
+const penTap = (x: number, y: number) => {
+  const pen = new Pointer("pen", 41);
+  pen.downAt(x, y);
+  fireEvent.touchStart(GlobalTestState.interactiveCanvas, {
+    touches: [stylusTouch(x, y)],
+    changedTouches: [stylusTouch(x, y)],
+  });
+  pen.upAt(x, y);
+  fireEvent.touchEnd(GlobalTestState.interactiveCanvas, {
+    touches: [],
+    changedTouches: [stylusTouch(x, y)],
+  });
+};
+
+describe("#6907 снимок выделения не переживает жест", () => {
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+    resetGestureState();
+    API.setAppState({ penMode: true, penDetected: true });
+    selectTool("selection");
+  });
+
+  const twoImages = () => {
+    const first = createImage();
+    const second = API.createElement({
+      type: "image",
+      x: 400,
+      y: 100,
+      width: 100,
+      height: 100,
+    });
+    API.setElements([first, second]);
+    API.setSelectedElements([first]);
+    return [first, second] as const;
+  };
+
+  it("отмена двумя пальцами, затем перо выделяет другую картинку", () => {
+    const [, second] = twoImages();
+
+    // двойной тап двумя пальцами -- undo; ветка undo выходит из onTouchEnd
+    for (let i = 0; i < 2; i++) {
+      const twoFingerTap = new Pinch({ x: 600, y: 500 }, { x: 700, y: 500 });
+      twoFingerTap.start();
+      twoFingerTap.endTogether();
+    }
+
+    penTap(450, 150);
+
+    expectOnlySelected(second);
+  });
+
+  it("touchcancel, затем перо выделяет другую картинку", () => {
+    const [, second] = twoImages();
+
+    const pinch = new Pinch({ x: 600, y: 500 }, { x: 700, y: 500 });
+    pinch.start();
+    pinch.spread(30);
+    // система отменила жест: touchend не придёт
+    fireEvent.touchCancel(GlobalTestState.interactiveCanvas, {
+      touches: [],
+      changedTouches: [],
+    });
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    Pointer.resetAll();
+
+    penTap(450, 150);
+
+    expectOnlySelected(second);
+  });
+
+  it("Safari gesturestart во время pinch не снимает выделение", () => {
+    const [first] = twoImages();
+
+    const pinch = new Pinch({ x: 600, y: 500 }, { x: 700, y: 500 });
+    pinch.start();
+    act(() => {
+      document.dispatchEvent(new Event("gesturestart"));
+    });
+
+    expectOnlySelected(first);
+    pinch.endTogether();
+    expectOnlySelected(first);
+  });
+
+  it("тап пальцем внутри редактируемой группы не выходит из неё", () => {
+    const a = API.createElement({
+      type: "image",
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      groupIds: ["g"],
+    });
+    const b = API.createElement({
+      type: "image",
+      x: 300,
+      y: 100,
+      width: 100,
+      height: 100,
+      groupIds: ["g"],
+    });
+    API.setElements([a, b]);
+    API.setAppState({
+      editingGroupId: "g",
+      selectedElementIds: { [a.id]: true },
+      selectedGroupIds: {},
+    });
+
+    tap(350, 150);
+
+    expect(h.state.editingGroupId).toBe("g");
+    expectOnlySelected(b);
+  });
+});

@@ -73,6 +73,7 @@ export enum EVENT {
   WHEEL = "wheel",
   TOUCH_START = "touchstart",
   TOUCH_END = "touchend",
+  TOUCH_CANCEL = "touchcancel",
   HASHCHANGE = "hashchange",
   VISIBILITY_CHANGE = "visibilitychange",
   SCROLL = "scroll",

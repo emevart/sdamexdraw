@@ -670,7 +670,37 @@ let penModeTapCandidate: {
   x: number;
   y: number;
   time: number;
+  /** наибольший радиус пятна касания по PointerEvent width/height, px */
+  contactRadius: number;
 } | null = null;
+// emevart/billion-dollars#6907: защита от ладони для тапа-выделения в pen mode.
+// На iPad ладонь лежит на экране между штрихами, а перо в этот момент в
+// воздухе (activePenPointerIds пуст), поэтому короткое касание ладонью
+// выглядит как тап пальцем. Тап действует (выделяет, снимает выделение,
+// открывает разблокировку), только если перо молчит дольше
+// PEN_MODE_TAP_PALM_GUARD_MS (pointerdown/move/up пера) и пятно касания не
+// шире PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX. Иначе касание игнорируется целиком
+// и остаётся пустым паном камеры.
+const PEN_MODE_TAP_PALM_GUARD_MS = 500;
+// Радиус пятна: Touch.radiusX/radiusY или половина PointerEvent width/height.
+// Кончик пальца -- примерно 10-25 px, ладонь заметно больше. 0 или нет
+// данных (браузер не отдаёт геометрию) -- считаем пятно маленьким.
+const PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX = 30;
+let lastPenActivityTime = -Infinity;
+// наибольший радиус прямых касаний последнего touchstart, px
+let lastTouchStartContactRadius = 0;
+const pointerContactRadius = (event: { width?: number; height?: number }) =>
+  Math.max(event.width || 0, event.height || 0) / 2;
+// emevart/billion-dollars#6907: выделение на момент первого касания пальцем.
+// Pinch/pan двумя пальцами выделение не меняет: первый палец мог успеть его
+// снять или поменять (касание пустого места, выделение рамкой), поэтому с
+// приходом второго пальца и в конце жеста выделение возвращается к снимку.
+let touchGestureSelection: {
+  selectedElementIds: AppState["selectedElementIds"];
+  selectedGroupIds: AppState["selectedGroupIds"];
+  editingGroupId: AppState["editingGroupId"];
+} | null = null;
+let touchGestureWasMultiTouch = false;
 // Three independent settings sets for pencil, highlighter, and shapes
 type ToolSettings = {
   strokeWidth: number;
@@ -3788,6 +3818,10 @@ class App extends React.Component<AppProps, AppState> {
     this.imageCache.clear();
     this.resizeObserver?.disconnect();
     this.unmounted = true;
+    // #6907: модульное состояние касаний не переносится в следующий редактор
+    lastPenActivityTime = -Infinity;
+    lastTouchStartContactRadius = 0;
+    App.clearTouchGestureSelection();
     this.removeEventListeners();
     this.library.destroy();
     this.laserTrails.stop();
@@ -4278,6 +4312,35 @@ class App extends React.Component<AppProps, AppState> {
     event.stopPropagation();
   });
 
+  private restoreTouchGestureSelection() {
+    const snapshot = touchGestureSelection;
+    if (!snapshot) {
+      return;
+    }
+    this.setState((state) => ({
+      selectedElementIds: makeNextSelectedElementIds(
+        snapshot.selectedElementIds,
+        state,
+      ),
+      selectedGroupIds: snapshot.selectedGroupIds,
+      editingGroupId: snapshot.editingGroupId,
+    }));
+  }
+
+  /** #6907: жест закончен или прерван -- снимок выделения больше не нужен. */
+  private static clearTouchGestureSelection() {
+    touchGestureSelection = null;
+    touchGestureWasMultiTouch = false;
+  }
+
+  private onTouchCancel = (event: TouchEvent) => {
+    // #6907: прерванный системой жест не должен оставить снимок, иначе
+    // следующий touchend (в том числе от Apple Pencil) откатит выделение.
+    if (event.touches.length === 0) {
+      App.clearTouchGestureSelection();
+    }
+  };
+
   private static resetTapTwice() {
     didTapTwice = false;
     firstTapPosition = null;
@@ -4308,6 +4371,10 @@ class App extends React.Component<AppProps, AppState> {
         directTouches.push(t);
       }
     }
+    lastTouchStartContactRadius = Math.max(
+      0,
+      ...directTouches.map((t) => Math.max(t.radiusX || 0, t.radiusY || 0)),
+    );
     if (activePenPointerIds.size === 0 && directTouches.length === 2) {
       // Record two-finger touch start for tap detection on touchend
       const positions = new Map<number, { x: number; y: number }>();
@@ -4319,10 +4386,12 @@ class App extends React.Component<AppProps, AppState> {
         positions,
         liftedOk: new Map(),
       };
-      this.setState({
-        selectedElementIds: makeNextSelectedElementIds({}, this.state),
-        activeEmbeddable: null,
-      });
+      // #6907: жест двумя пальцами -- камера, не выделение. Раньше здесь
+      // выделение обнулялось, и pinch снимал выделение только что вставленной
+      // картинки. Возвращаем выделение, бывшее до первого пальца.
+      touchGestureWasMultiTouch = true;
+      this.restoreTouchGestureSelection();
+      this.setState({ activeEmbeddable: null });
     } else {
       twoFingerTouchStart = null;
     }
@@ -4405,6 +4474,8 @@ class App extends React.Component<AppProps, AppState> {
               // Second two-finger tap → undo
               lastTwoFingerTapTime = 0;
               twoFingerTouchStart = null;
+              // #6907: undo сам задаёт выделение; снимок жеста устарел
+              App.clearTouchGestureSelection();
               this.actionManager.executeAction(this.undoAction, "ui");
               return;
             }
@@ -4419,17 +4490,18 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     this.resetContextMenuTimer();
+    // #6907: после жеста двумя пальцами выделение -- как до первого пальца,
+    // в том числе когда пальцы оторвались в одном кадре (touches пуст), а
+    // pointerup первого пальца успел снять выделение.
+    if (touchGestureWasMultiTouch) {
+      this.restoreTouchGestureSelection();
+    }
     if (event.touches.length > 0) {
-      this.setState({
-        previousSelectedElementIds: {},
-        selectedElementIds: makeNextSelectedElementIds(
-          this.state.previousSelectedElementIds,
-          this.state,
-        ),
-      });
+      this.setState({ previousSelectedElementIds: {} });
     } else {
       gesture.pointers.clear();
       activePenPointerIds.clear();
+      App.clearTouchGestureSelection();
     }
 
     // пальцев меньше двух -- touch-путь больше не ведёт жест
@@ -4990,6 +5062,7 @@ class App extends React.Component<AppProps, AppState> {
 
     if (event.pointerType === "pen") {
       activePenPointerIds.delete(event.pointerId);
+      lastPenActivityTime = Date.now();
     }
 
     const wasMultiTouchGesture = gesture.pointers.size >= 2;
@@ -6650,13 +6723,10 @@ class App extends React.Component<AppProps, AppState> {
   private onGestureStart = withBatchedUpdates((event: GestureEvent) => {
     event.preventDefault();
 
-    // we only want to deselect on touch screens because user may have selected
-    // elements by mistake while zooming
+    // #6907: pinch на сенсорном экране не меняет выделение (раньше здесь
+    // оно обнулялось и на iOS мигало до восстановления в onTouchEnd)
     if (this.isTouchScreenMultiTouchGesture()) {
-      this.setState({
-        selectedElementIds: makeNextSelectedElementIds({}, this.state),
-        activeEmbeddable: null,
-      });
+      this.setState({ activeEmbeddable: null });
     }
     gesture.initialScale = this.state.zoom.value;
   });
@@ -7922,6 +7992,9 @@ class App extends React.Component<AppProps, AppState> {
   ) => {
     this.savePointer(event.clientX, event.clientY, this.state.cursorButton);
     this.lastPointerMoveEvent = event.nativeEvent;
+    if (event.pointerType === "pen") {
+      lastPenActivityTime = Date.now();
+    }
     const scenePointer = viewportCoordsToSceneCoords(event, this.state);
     const { x: scenePointerX, y: scenePointerY } = scenePointer;
     this.lastPointerMoveCoords = {
@@ -8998,12 +9071,27 @@ class App extends React.Component<AppProps, AppState> {
 
     if (event.pointerType === "pen") {
       activePenPointerIds.add(event.pointerId);
+      lastPenActivityTime = Date.now();
+      // #6907: перо начинает своё действие; снимок жеста пальцами устарел, а
+      // touchend от Apple Pencil (touchType "stylus") не должен его вернуть
+      App.clearTouchGestureSelection();
     } else if (event.pointerType === "touch" && activePenPointerIds.size > 0) {
       // Palm rejection: while a pen is on the surface, touch contacts are
       // palm. Ignore them entirely -- they must not cancel the ongoing pen
       // stroke (the freedraw spike-discard block below), join the gesture,
       // or start a pan.
       return;
+    }
+
+    // #6907: снимок выделения до первого пальца -- к нему жест двумя
+    // пальцами возвращает выделение (onTouchStart / onTouchEnd).
+    if (event.pointerType === "touch" && gesture.pointers.size === 0) {
+      touchGestureSelection = {
+        selectedElementIds: this.state.selectedElementIds,
+        selectedGroupIds: this.state.selectedGroupIds,
+        editingGroupId: this.state.editingGroupId,
+      };
+      touchGestureWasMultiTouch = false;
     }
 
     this.updateGestureOnPointerDown(event);
@@ -9570,6 +9658,7 @@ class App extends React.Component<AppProps, AppState> {
             x: event.clientX,
             y: event.clientY,
             time: Date.now(),
+            contactRadius: pointerContactRadius(event),
           }
         : null;
 
@@ -9743,8 +9832,25 @@ class App extends React.Component<AppProps, AppState> {
         // with no pen on the surface.
         const tap = penModeTapCandidate;
         penModeTapCandidate = null;
+        // emevart/billion-dollars#6907: защита от ладони (см.
+        // PEN_MODE_TAP_PALM_GUARD_MS). Подозрительное касание игнорируется
+        // целиком: не выделяет, не снимает выделение и не открывает
+        // разблокировку.
+        const tapLooksLikePalm =
+          !!tap &&
+          (tap.time - lastPenActivityTime <= PEN_MODE_TAP_PALM_GUARD_MS ||
+            Math.max(
+              tap.contactRadius,
+              upEvent
+                ? pointerContactRadius(
+                    upEvent as { width?: number; height?: number },
+                  )
+                : 0,
+              lastTouchStartContactRadius,
+            ) > PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX);
         if (
           tap &&
+          !tapLooksLikePalm &&
           upEvent &&
           "pointerId" in upEvent &&
           (upEvent as PointerEvent).pointerId === tap.pointerId &&
@@ -9795,11 +9901,44 @@ class App extends React.Component<AppProps, AppState> {
             if (this.state.activeLockedId != null) {
               this.setState({ activeLockedId: null });
             }
+          } else if (
+            hitElement &&
+            isSelectionLikeTool(this.state.activeTool.type) &&
+            !this.state.viewModeEnabled
+          ) {
+            // emevart/billion-dollars#6907: с инструментом «указатель»
+            // короткий тап пальцем выделяет элемент сразу, как клик мышью.
+            // Раньше палец в pen mode не выделял, и выделить можно было только
+            // долгим нажатием (контекстное меню). С инструментом рисования
+            // палец по-прежнему камера и не выделяет.
+            this.setState((prevState) => ({
+              ...selectGroupsForSelectedElements(
+                {
+                  // внутри редактируемой группы тап выделяет элемент группы
+                  // и не выходит из редактирования -- как клик на ПК
+                  editingGroupId:
+                    prevState.editingGroupId &&
+                    isElementInGroup(hitElement, prevState.editingGroupId)
+                      ? prevState.editingGroupId
+                      : null,
+                  selectedElementIds: { [hitElement.id]: true },
+                },
+                this.scene.getNonDeletedElements(),
+                prevState,
+                this,
+              ),
+              activeLockedId: null,
+              activeEmbeddable: null,
+              showHyperlinkPopup:
+                hitElement.link || isEmbeddableElement(hitElement)
+                  ? "info"
+                  : false,
+            }));
           } else if (hitElement && this.state.activeLockedId != null) {
-            // The finger still never selects, but a tap on another (unlocked)
-            // element must not leave a stale unlock affordance behind --
-            // desktop clears activeLockedId on any pointerup off the locked
-            // element.
+            // With a drawing tool the finger still never selects, but a tap
+            // on another (unlocked) element must not leave a stale unlock
+            // affordance behind -- desktop clears activeLockedId on any
+            // pointerup off the locked element.
             this.setState({ activeLockedId: null });
           }
         }
@@ -14445,6 +14584,10 @@ class App extends React.Component<AppProps, AppState> {
         { passive: false },
       );
       this.interactiveCanvas.addEventListener(EVENT.TOUCH_END, this.onTouchEnd);
+      this.interactiveCanvas.addEventListener(
+        EVENT.TOUCH_CANCEL,
+        this.onTouchCancel,
+      );
       // -----------------------------------------------------------------------
     } else {
       this.interactiveCanvas?.removeEventListener(
@@ -14454,6 +14597,10 @@ class App extends React.Component<AppProps, AppState> {
       this.interactiveCanvas?.removeEventListener(
         EVENT.TOUCH_END,
         this.onTouchEnd,
+      );
+      this.interactiveCanvas?.removeEventListener(
+        EVENT.TOUCH_CANCEL,
+        this.onTouchCancel,
       );
     }
   };

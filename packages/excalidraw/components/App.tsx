@@ -100,6 +100,8 @@ import {
   STRAIGHTEN_HOLD_TIME,
   STRAIGHTEN_MIN_LENGTH,
   STRAIGHTEN_ANIMATION_DURATION,
+  STRAIGHTEN_MOVE_THRESHOLD,
+  STRAIGHTEN_MOVE_THRESHOLD_TOUCH,
   invariant,
   getFeatureFlag,
   createUserAgentDescriptor,
@@ -750,6 +752,22 @@ let isStraightening = false;
 // Puts the stroke of the running straighten animation into its target shape;
 // set while the animation runs, so a release mid-animation can finish on it.
 let finishStraightenAnimation: (() => boolean) | null = null;
+// sdamex #6066: ends the running straighten animation at once and passes the
+// pen to transform mode; set while the animation runs
+let completeStraightenAnimation: (() => boolean) | null = null;
+// sdamex #6066: scene position of the pen when the hold fired
+let straightenHoldPos: { x: number; y: number } | null = null;
+
+/**
+ * sdamex #6066: scene distance the pen has to go after the hold fired to
+ * count as a move (screen px of the mouse / of a pen or a finger); a smaller
+ * one is jitter. A fixed scene distance grew with the zoom: at 300-500% the
+ * end of a straightened line stuck for 15-25 screen px.
+ */
+const getStraightenMoveThreshold = (pointerType: string, zoom: number) =>
+  (pointerType === "mouse"
+    ? STRAIGHTEN_MOVE_THRESHOLD
+    : STRAIGHTEN_MOVE_THRESHOLD_TOUCH) / zoom;
 // eslint-disable-next-line prefer-const -- reassigned in animateStraighten/pointerUp
 let wasStraightened = false;
 
@@ -10608,13 +10626,21 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   private animateStraighten(element: NonDeleted<ExcalidrawFreeDrawElement>) {
-    const result = computeStraightenResult(element.points);
+    const result = computeStraightenResult(
+      element.points,
+      this.state.zoom.value,
+    );
     if (!result) {
       return;
     }
 
     isStraightening = true;
     const originalPoints = [...element.points];
+    const holdPoint = originalPoints[originalPoints.length - 1];
+    straightenHoldPos = {
+      x: element.x + holdPoint[0],
+      y: element.y + holdPoint[1],
+    };
     const { animationTargets, finalPoints } = result;
     const startTime = performance.now();
 
@@ -10642,6 +10668,8 @@ class App extends React.Component<AppProps, AppState> {
         isStraightening = false;
         straightenAnimationId = null;
         finishStraightenAnimation = null;
+        completeStraightenAnimation = null;
+        straightenHoldPos = null;
         return;
       }
 
@@ -10663,57 +10691,76 @@ class App extends React.Component<AppProps, AppState> {
       if (t < 1) {
         straightenAnimationId = requestAnimationFrame(animate);
       } else {
-        applyFinalPoints();
-        straightenAnimationId = null;
-        isStraightening = false;
-        finishStraightenAnimation = null;
-
-        // Enter transform mode (Procreate-style drag/rotate/scale)
-        const pts = finalPoints;
-        const isClosed =
-          pts.length > 2 && pointDistance(pts[0], pts[pts.length - 1]) < 1;
-
-        // Anchor: centroid for closed shapes, first point for open
-        let anchorLocalX: number;
-        let anchorLocalY: number;
-        if (isClosed) {
-          let sx = 0;
-          let sy = 0;
-          for (const p of pts) {
-            sx += p[0];
-            sy += p[1];
-          }
-          anchorLocalX = sx / pts.length;
-          anchorLocalY = sy / pts.length;
-        } else {
-          anchorLocalX = pts[0][0];
-          anchorLocalY = pts[0][1];
-        }
-        transformAnchor = {
-          x: element.x + anchorLocalX,
-          y: element.y + anchorLocalY,
-        };
-        transformInitialPoints = [...finalPoints];
-        transformInitialElementX = element.x;
-        transformInitialElementY = element.y;
-
-        const lastPt = pts[pts.length - 1];
-        const cursorX = element.x + lastPt[0];
-        const cursorY = element.y + lastPt[1];
-        transformInitialAngle = Math.atan2(
-          cursorY - transformAnchor.y,
-          cursorX - transformAnchor.x,
-        );
-        transformInitialDist = Math.max(
-          0.01,
-          pointDistance(
-            pointFrom(cursorX, cursorY),
-            pointFrom(transformAnchor.x, transformAnchor.y),
-          ),
-        );
-        transformEntryPos = { x: cursorX, y: cursorY };
-        isStraightenTransforming = true;
+        complete();
       }
+    };
+
+    // the target shape, then transform mode (also on a move of the pen
+    // mid-animation, sdamex #6066)
+    const complete = () => {
+      applyFinalPoints();
+      straightenAnimationId = null;
+      isStraightening = false;
+      finishStraightenAnimation = null;
+      completeStraightenAnimation = null;
+      straightenHoldPos = null;
+
+      // Enter transform mode (Procreate-style drag/rotate/scale)
+      const pts = finalPoints;
+      const isClosed =
+        pts.length > 2 && pointDistance(pts[0], pts[pts.length - 1]) < 1;
+
+      // Anchor: centroid for closed shapes, first point for open
+      let anchorLocalX: number;
+      let anchorLocalY: number;
+      if (isClosed) {
+        let sx = 0;
+        let sy = 0;
+        for (const p of pts) {
+          sx += p[0];
+          sy += p[1];
+        }
+        anchorLocalX = sx / pts.length;
+        anchorLocalY = sy / pts.length;
+      } else {
+        anchorLocalX = pts[0][0];
+        anchorLocalY = pts[0][1];
+      }
+      transformAnchor = {
+        x: element.x + anchorLocalX,
+        y: element.y + anchorLocalY,
+      };
+      transformInitialPoints = [...finalPoints];
+      transformInitialElementX = element.x;
+      transformInitialElementY = element.y;
+
+      const lastPt = pts[pts.length - 1];
+      const cursorX = element.x + lastPt[0];
+      const cursorY = element.y + lastPt[1];
+      transformInitialAngle = Math.atan2(
+        cursorY - transformAnchor.y,
+        cursorX - transformAnchor.x,
+      );
+      transformInitialDist = Math.max(
+        0.01,
+        pointDistance(
+          pointFrom(cursorX, cursorY),
+          pointFrom(transformAnchor.x, transformAnchor.y),
+        ),
+      );
+      transformEntryPos = { x: cursorX, y: cursorY };
+      isStraightenTransforming = true;
+    };
+
+    completeStraightenAnimation = () => {
+      if (this.state.newElement !== element) {
+        return false;
+      }
+      if (straightenAnimationId !== null) {
+        cancelAnimationFrame(straightenAnimationId);
+      }
+      complete();
+      return true;
     };
 
     straightenAnimationId = requestAnimationFrame(animate);
@@ -12467,6 +12514,28 @@ class App extends React.Component<AppProps, AppState> {
         }
 
         if (newElement.type === "freedraw") {
+          const straightenMoveThreshold = getStraightenMoveThreshold(
+            event.pointerType,
+            this.state.zoom.value,
+          );
+
+          // sdamex #6066: the pen moved away during the straighten
+          // animation: the animation ends at once and the pen goes on in
+          // transform mode, instead of being ignored until the animation
+          // ends. Jitter inside the threshold keeps the animation running.
+          if (isStraightening) {
+            if (
+              !straightenHoldPos ||
+              Math.hypot(
+                pointerCoords.x - straightenHoldPos.x,
+                pointerCoords.y - straightenHoldPos.y,
+              ) < straightenMoveThreshold ||
+              !completeStraightenAnimation?.()
+            ) {
+              return;
+            }
+          }
+
           // Transform mode: rotate/scale after straightening
           if (
             isStraightenTransforming &&
@@ -12477,14 +12546,18 @@ class App extends React.Component<AppProps, AppState> {
             const cursorY = pointerCoords.y;
 
             // Keep a small relative dead zone so tiny marks can still shrink.
+            // sdamex #6066: in screen px, not in scene px
             if (transformEntryPos) {
               const entryDist = Math.sqrt(
                 (cursorX - transformEntryPos.x) ** 2 +
                   (cursorY - transformEntryPos.y) ** 2,
               );
               const entryThreshold = Math.min(
-                5,
-                Math.max(0.5, transformInitialDist * 0.25),
+                straightenMoveThreshold,
+                Math.max(
+                  0.5 / this.state.zoom.value,
+                  transformInitialDist * 0.25,
+                ),
               );
               if (entryDist < entryThreshold) {
                 return;
@@ -12545,10 +12618,6 @@ class App extends React.Component<AppProps, AppState> {
               points: normalizedPoints,
             });
             this.setState({ newElement });
-            return;
-          }
-
-          if (isStraightening) {
             return;
           }
 
@@ -12615,15 +12684,19 @@ class App extends React.Component<AppProps, AppState> {
               straightenAnimationId = null;
               isStraightening = false;
               finishStraightenAnimation = null;
+              completeStraightenAnimation = null;
+              straightenHoldPos = null;
             }
 
             straightenTimerId = window.setTimeout(() => {
               straightenTimerId = null;
               const el = this.state.newElement;
+              // sdamex #6066: the path length on screen
               if (
                 el &&
                 el.type === "freedraw" &&
-                pathLength(el.points) >= STRAIGHTEN_MIN_LENGTH
+                pathLength(el.points) * this.state.zoom.value >=
+                  STRAIGHTEN_MIN_LENGTH
               ) {
                 this.animateStraighten(
                   el as NonDeleted<ExcalidrawFreeDrawElement>,
@@ -13141,6 +13214,8 @@ class App extends React.Component<AppProps, AppState> {
           cancelAnimationFrame(straightenAnimationId);
           straightenAnimationId = null;
           isStraightening = false;
+          completeStraightenAnimation = null;
+          straightenHoldPos = null;
           // Released mid-animation: commit the target shape the animation
           // was heading to, without the release point. Stopping on the
           // intermediate points left a half-straightened stroke with a hook.

@@ -37,6 +37,7 @@ import type {
 
 import { t } from "../i18n";
 import { resetCursor } from "../cursor";
+import { isLargeEnoughToAutoClose } from "../straighten";
 import { done } from "../components/icons";
 import { ToolButton } from "../components/ToolButton";
 
@@ -286,7 +287,12 @@ export const actionFinalize = register<FormData>({
         // If the multi point line closes the loop,
         // set the last point to first point.
         // This ensures that loop remains closed at different scales.
-        const isLoop = isPathALoop(element.points, appState.zoom.value);
+        // sdamex #6066: a pen stroke closes only when it is large on screen;
+        // handwriting ("o", "6", "8") ends near its start without a loop
+        const isLoop =
+          isPathALoop(element.points, appState.zoom.value) &&
+          (!isFreeDrawElement(element) ||
+            isLargeEnoughToAutoClose(element.points, appState.zoom.value));
 
         if (isLoop && (isLineElement(element) || isFreeDrawElement(element))) {
           const linePoints = element.points;

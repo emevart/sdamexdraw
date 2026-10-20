@@ -3,6 +3,7 @@ import { pointFrom, pointDistance } from "@excalidraw/math";
 import {
   STRAIGHTEN_DEVIATION_THRESHOLD,
   STRAIGHTEN_CLOSE_THRESHOLD,
+  STRAIGHTEN_CLOSE_MIN_SIZE,
   STRAIGHTEN_CORNER_WINDOW,
   STRAIGHTEN_CORNER_ANGLE,
 } from "@excalidraw/common";
@@ -53,18 +54,7 @@ export const pathLength = (points: readonly LocalPoint[]): number => {
 const AUTO_CLOSE_MIN_THRESHOLD = 1;
 const AUTO_CLOSE_MAX_RATIO = 0.12;
 
-/**
- * Keep the close gesture proportional to the mark size. A fixed 30px gap
- * makes compact strokes look closed even when the user only draws a small
- * open mark.
- */
-export const getAutoCloseThreshold = (
-  points: readonly LocalPoint[],
-): number => {
-  if (points.length === 0) {
-    return AUTO_CLOSE_MIN_THRESHOLD;
-  }
-
+const getPointsBox = (points: readonly LocalPoint[]) => {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -77,10 +67,71 @@ export const getAutoCloseThreshold = (
     maxY = Math.max(maxY, y);
   }
 
-  const diagonal = Math.hypot(maxX - minX, maxY - minY);
-  return Math.min(
-    STRAIGHTEN_CLOSE_THRESHOLD,
-    Math.max(AUTO_CLOSE_MIN_THRESHOLD, diagonal * AUTO_CLOSE_MAX_RATIO),
+  return { width: maxX - minX, height: maxY - minY };
+};
+
+const normalizeZoom = (zoom: number) =>
+  Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+
+/**
+ * Keep the close gesture proportional to the mark size. A fixed 30px gap
+ * makes compact strokes look closed even when the user only draws a small
+ * open mark. Measured on screen (sdamex #6066): the result is in scene px.
+ */
+export const getAutoCloseThreshold = (
+  points: readonly LocalPoint[],
+  zoom: number = 1,
+): number => {
+  zoom = normalizeZoom(zoom);
+  if (points.length === 0) {
+    return AUTO_CLOSE_MIN_THRESHOLD / zoom;
+  }
+
+  const { width, height } = getPointsBox(points);
+  const diagonal = Math.hypot(width, height) * zoom;
+  return (
+    Math.min(
+      STRAIGHTEN_CLOSE_THRESHOLD,
+      Math.max(AUTO_CLOSE_MIN_THRESHOLD, diagonal * AUTO_CLOSE_MAX_RATIO),
+    ) / zoom
+  );
+};
+
+/**
+ * sdamex #6066: whether the stroke closes on hold. Only a stroke clearly
+ * larger than the close threshold on screen closes: handwriting ("o", "6",
+ * "8" up to ~30 px) ends near its start without being a closed shape.
+ */
+/**
+ * sdamex #6066: whether a stroke is large enough on screen to be closed at
+ * all, by the hold or by the loop snap of finalize: the larger side of its
+ * box is at least STRAIGHTEN_CLOSE_MIN_SIZE screen px.
+ */
+export const isLargeEnoughToAutoClose = (
+  points: readonly LocalPoint[],
+  zoom: number = 1,
+): boolean => {
+  if (points.length < 2) {
+    return false;
+  }
+  const { width, height } = getPointsBox(points);
+  return (
+    Math.max(width, height) * normalizeZoom(zoom) >= STRAIGHTEN_CLOSE_MIN_SIZE
+  );
+};
+
+export const shouldAutoClose = (
+  points: readonly LocalPoint[],
+  zoom: number = 1,
+): boolean => {
+  if (!isLargeEnoughToAutoClose(points, zoom)) {
+    return false;
+  }
+  zoom = normalizeZoom(zoom);
+  const gap = pointDistance(points[0], points[points.length - 1]);
+  return (
+    gap < getAutoCloseThreshold(points, zoom) &&
+    pathLength(points) * zoom > STRAIGHTEN_CLOSE_THRESHOLD * 3
   );
 };
 
@@ -409,29 +460,28 @@ export type StraightenResult = {
 /**
  * Compute straightening targets for a freedraw stroke.
  *
+ * `zoom` is the zoom the stroke was drawn at: the close gesture is measured
+ * on screen.
+ *
  * Flow:
- * 1. If gap < a size-relative threshold → contract to close (ease-out pull)
+ * 1. If the stroke is large on screen and its gap < a size-relative
+ *    threshold → contract to close (ease-out pull)
  * 2. If open and low deviation → straighten to line
  * 3. Otherwise → detect corners, smooth segments between them
  */
 export const computeStraightenResult = (
   points: readonly LocalPoint[],
+  zoom: number = 1,
 ): StraightenResult | null => {
   if (points.length < 2) {
     return null;
   }
 
-  const start = points[0];
-  const end = points[points.length - 1];
-  const gapDist = pointDistance(start, end);
-  const totalLen = pathLength(points);
-  const closeThreshold = getAutoCloseThreshold(points);
-
   // Step 1: Closure detection — contract if gap is small
   let isClosed = false;
   let workingPoints: LocalPoint[];
 
-  if (gapDist < closeThreshold && totalLen > STRAIGHTEN_CLOSE_THRESHOLD * 3) {
+  if (shouldAutoClose(points, zoom)) {
     workingPoints = contractToClose(points);
     isClosed = true;
   } else {

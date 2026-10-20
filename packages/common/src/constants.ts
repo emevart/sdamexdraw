@@ -544,9 +544,11 @@ export const MOBILE_ACTION_BUTTON_BG = {
 
 // Line straightening (hold-to-straighten)
 export const STRAIGHTEN_HOLD_TIME = 500;
+// screen px: a move of the pen after the hold fired that counts as a move
+// (mouse / pen and touch); a smaller one is jitter
 export const STRAIGHTEN_MOVE_THRESHOLD = 3;
 export const STRAIGHTEN_MOVE_THRESHOLD_TOUCH = 5;
-export const STRAIGHTEN_MIN_LENGTH = 20;
+export const STRAIGHTEN_MIN_LENGTH = 20; // screen px of the path
 export const STRAIGHTEN_DEVIATION_THRESHOLD = 0.1;
 export const STRAIGHTEN_ANIMATION_DURATION = 250;
 
@@ -554,5 +556,8 @@ export const STRAIGHTEN_ANIMATION_DURATION = 250;
 export const LINE_CLOSE_SNAP_THRESHOLD = 20; // scene-px (divided by zoomValue at usage site)
 
 export const STRAIGHTEN_CLOSE_THRESHOLD = 30; // px — max gap for auto-close
+// sdamex #6066: a stroke smaller than this on screen (larger side of its box,
+// screen px) never auto-closes: handwriting ("o", "6", "8") stays open
+export const STRAIGHTEN_CLOSE_MIN_SIZE = STRAIGHTEN_CLOSE_THRESHOLD * 2;
 export const STRAIGHTEN_CORNER_WINDOW = 6; // points each side for corner detection
 export const STRAIGHTEN_CORNER_ANGLE = 35; // degrees — min angle to be a corner

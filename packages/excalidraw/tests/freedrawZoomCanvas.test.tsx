@@ -12,6 +12,7 @@ import {
 import type { LocalPoint } from "@excalidraw/math";
 import type {
   ExcalidrawFreeDrawElement,
+  NonDeleted,
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
 
@@ -23,6 +24,8 @@ import { API } from "./helpers/api";
 
 import type { StaticCanvasRenderConfig } from "../scene/types";
 import type { AppState, StaticCanvasAppState } from "../types";
+
+type Stroke = NonDeleted<ExcalidrawFreeDrawElement>;
 
 // sdamex emevart/billion-dollars#6066 (F1): a pen stroke used to be drawn
 // through its own element canvas sized bbox × dpr × zoom (+ padding), so at
@@ -68,7 +71,7 @@ const stroke = (
     points: wave(width, height),
     strokeWidth: 2,
     ...rest,
-  } as any) as ExcalidrawFreeDrawElement;
+  } as any) as unknown as Stroke;
 };
 
 /** Strokes with bbox 20–80 × 15–60, as in the estimate of the issue. */
@@ -128,7 +131,9 @@ const paint = (
 };
 
 /** Total pixel area of the element canvases of the given elements. */
-const elementCanvasArea = (elements: readonly NonDeletedExcalidrawElement[]) => {
+const elementCanvasArea = (
+  elements: readonly NonDeletedExcalidrawElement[],
+) => {
   let count = 0;
   let area = 0;
   for (const element of elements) {
@@ -269,6 +274,9 @@ describe.each(["legacy", "v2"] as const)(
         paint(elements, zoom);
         expect(elementCanvasArea(elements)).toEqual({ count: 0, megabytes: 0 });
       },
+      // 2000 strokes: before the fix the mock built every canvas, slow
+      // under a loaded run
+      30_000,
     );
 
     it("keeps element canvases at zoom 1 and below", () => {
@@ -328,6 +336,31 @@ describe.each(["legacy", "v2"] as const)(
       ).toHaveLength(1);
     });
 
+    it("keeps the element canvas for a translucent closed stroke with a fill", () => {
+      // the fill and the ink are faded together only through the canvas
+      const ring = (opacity: number) =>
+        API.createElement({
+          type: "freedraw",
+          x: 0,
+          y: 0,
+          opacity,
+          backgroundColor: "#ffc9c9",
+          points: Array.from(
+            { length: 25 },
+            (_, i) =>
+              [
+                30 + 30 * Math.cos((i / 24) * 2 * Math.PI),
+                30 + 30 * Math.sin((i / 24) * 2 * Math.PI),
+              ] as LocalPoint,
+          ),
+        } as any) as unknown as Stroke;
+      const translucent = ring(50);
+      const opaque = ring(100);
+      paint([translucent, opaque], 3);
+      expect(elementWithCanvasCache.get(translucent)).toBeDefined();
+      expect(elementWithCanvasCache.get(opaque)).toBeUndefined();
+    });
+
     it("does not rebuild the stroke path on every frame", () => {
       const elements = board().slice(0, 100);
       paint(elements, 3);
@@ -349,10 +382,15 @@ describe.each(["legacy", "v2"] as const)(
         exportScale: 2,
       } as unknown as AppState;
 
-      const canvas = await exportToCanvas(elements, appState, {}, {
-        exportBackground: false,
-        viewBackgroundColor: "#ffffff",
-      });
+      const canvas = await exportToCanvas(
+        elements,
+        appState,
+        {},
+        {
+          exportBackground: false,
+          viewBackgroundColor: "#ffffff",
+        },
+      );
       const calls = (canvas.getContext("2d") as any)
         .__getDrawCalls()
         .map((call: any) => ({

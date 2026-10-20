@@ -523,6 +523,51 @@ describe("#6907 защита от ладони: тап пальцем в pen mod
     expect(selectedIds()).toEqual([]);
   });
 
+  it("ладонь через 200 мс после пера по пустому месту не снимает выделение", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    penStroke();
+    API.setSelectedElements([image]);
+    now += 200;
+    tap(600, 600);
+
+    expectOnlySelected(image);
+  });
+
+  it("ладонь через 200 мс после пера по заблокированному не открывает разблокировку", () => {
+    const image = createImage();
+    const locked = API.createElement({
+      type: "rectangle",
+      x: 400,
+      y: 300,
+      width: 100,
+      height: 100,
+      locked: true,
+    });
+    API.setElements([image, locked]);
+
+    penStroke();
+    API.setSelectedElements([image]);
+    now += 200;
+    tap(450, 350);
+
+    expectOnlySelected(image);
+    expect(h.state.activeLockedId).toBe(null);
+  });
+
+  it("палец через 800 мс после пера по пустому месту снимает выделение", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    penStroke();
+    API.setSelectedElements([image]);
+    now += 800;
+    tap(600, 600);
+
+    expect(selectedIds()).toEqual([]);
+  });
+
   it("палец через 800 мс после пера выделяет", () => {
     const image = createImage();
     API.setElements([image]);

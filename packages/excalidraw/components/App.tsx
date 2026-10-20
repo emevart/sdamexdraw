@@ -676,10 +676,11 @@ let penModeTapCandidate: {
 // emevart/billion-dollars#6907: защита от ладони для тапа-выделения в pen mode.
 // На iPad ладонь лежит на экране между штрихами, а перо в этот момент в
 // воздухе (activePenPointerIds пуст), поэтому короткое касание ладонью
-// выглядит как тап пальцем. Тап выделяет элемент, только если перо молчит
-// дольше PEN_MODE_TAP_PALM_GUARD_MS (pointerdown/move/up пера) и пятно
-// касания не шире PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX. Иначе касание по
-// элементу игнорируется, как до #6907.
+// выглядит как тап пальцем. Тап действует (выделяет, снимает выделение,
+// открывает разблокировку), только если перо молчит дольше
+// PEN_MODE_TAP_PALM_GUARD_MS (pointerdown/move/up пера) и пятно касания не
+// шире PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX. Иначе касание игнорируется целиком
+// и остаётся пустым паном камеры.
 const PEN_MODE_TAP_PALM_GUARD_MS = 500;
 // Радиус пятна: Touch.radiusX/radiusY или половина PointerEvent width/height.
 // Кончик пальца -- примерно 10-25 px, ладонь заметно больше. 0 или нет
@@ -3817,6 +3818,10 @@ class App extends React.Component<AppProps, AppState> {
     this.imageCache.clear();
     this.resizeObserver?.disconnect();
     this.unmounted = true;
+    // #6907: модульное состояние касаний не переносится в следующий редактор
+    lastPenActivityTime = -Infinity;
+    lastTouchStartContactRadius = 0;
+    App.clearTouchGestureSelection();
     this.removeEventListeners();
     this.library.destroy();
     this.laserTrails.stop();
@@ -9827,8 +9832,25 @@ class App extends React.Component<AppProps, AppState> {
         // with no pen on the surface.
         const tap = penModeTapCandidate;
         penModeTapCandidate = null;
+        // emevart/billion-dollars#6907: защита от ладони (см.
+        // PEN_MODE_TAP_PALM_GUARD_MS). Подозрительное касание игнорируется
+        // целиком: не выделяет, не снимает выделение и не открывает
+        // разблокировку.
+        const tapLooksLikePalm =
+          !!tap &&
+          (tap.time - lastPenActivityTime <= PEN_MODE_TAP_PALM_GUARD_MS ||
+            Math.max(
+              tap.contactRadius,
+              upEvent
+                ? pointerContactRadius(
+                    upEvent as { width?: number; height?: number },
+                  )
+                : 0,
+              lastTouchStartContactRadius,
+            ) > PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX);
         if (
           tap &&
+          !tapLooksLikePalm &&
           upEvent &&
           "pointerId" in upEvent &&
           (upEvent as PointerEvent).pointerId === tap.pointerId &&
@@ -9882,14 +9904,7 @@ class App extends React.Component<AppProps, AppState> {
           } else if (
             hitElement &&
             isSelectionLikeTool(this.state.activeTool.type) &&
-            !this.state.viewModeEnabled &&
-            // защита от ладони (см. PEN_MODE_TAP_PALM_GUARD_MS)
-            tap.time - lastPenActivityTime > PEN_MODE_TAP_PALM_GUARD_MS &&
-            Math.max(
-              tap.contactRadius,
-              pointerContactRadius(upPointerEvent),
-              lastTouchStartContactRadius,
-            ) <= PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX
+            !this.state.viewModeEnabled
           ) {
             // emevart/billion-dollars#6907: с инструментом «указатель»
             // короткий тап пальцем выделяет элемент сразу, как клик мышью.

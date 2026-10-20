@@ -4,8 +4,10 @@ import { vi } from "vitest";
 import { arrayToMap } from "@excalidraw/common";
 import {
   ShapeCache,
+  appendFreedrawPoints,
   elementWithCanvasCache,
   getFreedrawInkPath2D,
+  newElementWith,
   setFreedrawPenInk,
 } from "@excalidraw/element";
 
@@ -368,6 +370,150 @@ describe.each(["legacy", "v2"] as const)(
       paint(elements, 3);
       paint(elements, 4);
       expect(pathsBuilt).toBe(built);
+    });
+
+    describe("Path2D cache of the stroke", () => {
+      let recorded: ReturnType<typeof record>;
+      let strokeSpy: ReturnType<typeof vi.spyOn>;
+      /** lineWidth at the moment of each stroke(): restore() resets it */
+      let lineWidths: number[];
+      beforeEach(() => {
+        // spied once per test: spying again would call itself
+        recorded = record();
+        const stroke = CanvasRenderingContext2D.prototype.stroke;
+        lineWidths = [];
+        strokeSpy = vi
+          .spyOn(CanvasRenderingContext2D.prototype, "stroke")
+          .mockImplementation(function (
+            this: CanvasRenderingContext2D,
+            ...args: any[]
+          ) {
+            lineWidths.push(this.lineWidth);
+            return (stroke as any).apply(this, args);
+          });
+      });
+
+      /**
+       * Paints the stroke at zoom 3 and returns what the scene canvas got for
+       * it: the Path2D, and the style it was drawn with.
+       */
+      const drawnAt3 = (element: Stroke, dashed = false) => {
+        recorded.fills.length = 0;
+        strokeSpy.mockClear();
+        lineWidths.length = 0;
+        const scene = paint([element], 3);
+        if (dashed) {
+          const i = strokeSpy.mock.contexts.findIndex(
+            (c) => (c as any).canvas === scene,
+          );
+          expect(i).toBeGreaterThanOrEqual(0);
+          return {
+            path: strokeSpy.mock.calls[i][0] as Path2D & { svg?: string },
+            lineWidth: lineWidths[i],
+          };
+        }
+        const drawn = recorded.fills.filter((f) => f.context.canvas === scene);
+        expect(drawn).toHaveLength(1);
+        return { path: drawn[0].path, fillStyle: drawn[0].fillStyle };
+      };
+
+      /** The SVG path ShapeCache holds for the stroke now. */
+      const currentSvg = (element: Stroke) => {
+        const shapes = ShapeCache.generateElementShape(element, {
+          isExporting: false,
+          canvasBackgroundColor: "#ffffff",
+          embedsValidationStatus: new Map(),
+          theme: "light",
+        } as any);
+        return shapes.find((shape) => typeof shape === "string");
+      };
+
+      const grow = (element: Stroke) => {
+        const added = [
+          [70, 12],
+          [78, 20],
+          [90, 8],
+        ] as LocalPoint[];
+        appendFreedrawPoints(element, added, [0.5, 0.5, 0.5]);
+      };
+
+      it("rebuilds the path when the stroke grows in place", () => {
+        // the pen appends to the very same element object while drawing
+        const element = stroke();
+        const before = drawnAt3(element);
+        expect(drawnAt3(element).path).toBe(before.path);
+
+        grow(element);
+        const after = drawnAt3(element);
+
+        expect(after.path).not.toBe(before.path);
+        if (ink === "v2") {
+          expect(after.path).toBe(getFreedrawInkPath2D(element));
+        } else {
+          expect(after.path.svg).toBeDefined();
+          expect(after.path.svg).not.toBe(before.path.svg);
+          expect(after.path.svg).toBe(currentSvg(element));
+        }
+        // and then it is cached again
+        expect(drawnAt3(element).path).toBe(after.path);
+      });
+
+      it("rebuilds the path of a dashed pen when the stroke grows in place", () => {
+        // a dashed pen goes through the SVG path cache in both inks
+        const element = stroke({ strokeStyle: "dashed" });
+        const before = drawnAt3(element, true);
+        expect(drawnAt3(element, true).path).toBe(before.path);
+
+        grow(element);
+        const after = drawnAt3(element, true);
+
+        expect(after.path).not.toBe(before.path);
+        expect(after.path.svg).toBeDefined();
+        expect(after.path.svg).not.toBe(before.path.svg);
+        expect(after.path.svg).toBe(currentSvg(element));
+      });
+
+      it.each([
+        ["strokeWidth", { strokeWidth: 6 }],
+        ["strokeColor", { strokeColor: "#e03131" }],
+      ])("draws a copy with another %s with its own path", (_, props) => {
+        const element = stroke();
+        const before = drawnAt3(element);
+
+        const copy = newElementWith(element, props) as Stroke;
+        const after = drawnAt3(copy);
+
+        expect(after.path).not.toBe(before.path);
+        if (ink === "v2") {
+          expect(after.path).toBe(getFreedrawInkPath2D(copy));
+        } else {
+          expect(after.path.svg).toBe(currentSvg(copy));
+        }
+        if ("strokeColor" in props) {
+          expect(after.fillStyle).not.toBe(before.fillStyle);
+        } else if (ink === "legacy") {
+          // a wider stroke is a wider outline
+          expect(after.path.svg).not.toBe(before.path.svg);
+        }
+        // the original keeps its own path
+        expect(drawnAt3(element).path).toBe(before.path);
+      });
+
+      it("draws a dashed copy with another strokeWidth and color", () => {
+        const element = stroke({ strokeStyle: "dashed" });
+        const before = drawnAt3(element, true);
+
+        const wider = newElementWith(element, { strokeWidth: 6 }) as Stroke;
+        const afterWidth = drawnAt3(wider, true);
+        expect(afterWidth.lineWidth).toBeGreaterThan(before.lineWidth!);
+        expect(afterWidth.path.svg).toBe(currentSvg(wider));
+
+        const red = newElementWith(element, {
+          strokeColor: "#e03131",
+        }) as Stroke;
+        expect(drawnAt3(red, true).path.svg).toBe(currentSvg(red));
+        expect(drawnAt3(element, true).path).toBe(before.path);
+      });
     });
 
     it("leaves the PNG and SVG export unchanged", async () => {

@@ -543,17 +543,23 @@ export const MOBILE_ACTION_BUTTON_BG = {
   background: "var(--mobile-action-button-bg)",
 } as const;
 
-// Line straightening (hold-to-straighten)
+// Line straightening (hold-to-straighten). Distances are screen (CSS) pixels,
+// divided by the zoom where they meet scene coordinates (billion-dollars#6066).
+// A hold: the pointer stays within the move threshold this long, whether or
+// not it reports samples meanwhile
 export const STRAIGHTEN_HOLD_TIME = 500;
-export const STRAIGHTEN_MOVE_THRESHOLD = 3;
-export const STRAIGHTEN_MOVE_THRESHOLD_TOUCH = 5;
-export const STRAIGHTEN_MIN_LENGTH = 20;
+export const STRAIGHTEN_MOVE_THRESHOLD = 3; // px, pen and mouse
+export const STRAIGHTEN_MOVE_THRESHOLD_TOUCH = 5; // px, finger
+export const STRAIGHTEN_MIN_LENGTH = 20; // px, path length on screen
+// px: a stroke whose bounding box is smaller on screen (longer side) is
+// handwriting, neither closed nor straightened
+export const STRAIGHTEN_MIN_SCREEN_SIZE = 36;
 export const STRAIGHTEN_DEVIATION_THRESHOLD = 0.1;
 export const STRAIGHTEN_ANIMATION_DURATION = 250;
 
 // Snap-to-first threshold for closing polygon from line tool
 export const LINE_CLOSE_SNAP_THRESHOLD = 20; // scene-px (divided by zoomValue at usage site)
 
-export const STRAIGHTEN_CLOSE_THRESHOLD = 30; // px — max gap for auto-close
+export const STRAIGHTEN_CLOSE_THRESHOLD = 30; // screen px — max gap for auto-close
 export const STRAIGHTEN_CORNER_WINDOW = 6; // points each side for corner detection
 export const STRAIGHTEN_CORNER_ANGLE = 35; // degrees — min angle to be a corner

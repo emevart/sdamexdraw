@@ -375,6 +375,8 @@ import { trackEvent } from "../analytics";
 import {
   computeStraightenResult,
   getFreedrawTransformScale,
+  getStraightenHoldRadius,
+  getStraightenTransformDeadZone,
   pathLength,
 } from "../straighten";
 import {
@@ -776,8 +778,19 @@ const mergeToolStrokeSettings = (
 });
 
 let straightenTimerId: number | null = null;
-// performance.now() of the last point appended to the stroke being drawn
-let straightenLastPointAt = 0;
+// billion-dollars#6066 (F4): the hold is the pointer staying within
+// getStraightenHoldRadius screen px of this scene point, since
+// straightenHoldStartedAt (performance.now()). A sample farther away moves
+// the anchor and restarts the hold; no samples at all keep it running.
+let straightenHoldAnchor: { x: number; y: number } | null = null;
+let straightenHoldStartedAt = 0;
+// The stroke the anchor belongs to: a new stroke starts a new hold
+let straightenHoldElementId: string | null = null;
+// Hold radius of the pointer that drew the stroke, screen px
+let straightenHoldRadius = 0;
+// Latest pointer position (scene) that came during the straighten animation:
+// applied as a transform when the animation ends instead of being dropped
+let straightenPendingCursor: { x: number; y: number } | null = null;
 let straightenAnimationId: number | null = null;
 let isStraightening = false;
 // Puts the stroke of the running straighten animation into its target shape;
@@ -792,6 +805,8 @@ let transformInitialAngle = 0;
 let transformInitialDist = 0;
 let transformInitialPoints: readonly LocalPoint[] | null = null;
 let transformEntryPos: { x: number; y: number } | null = null;
+// Dead zone around transformEntryPos, scene units (screen px at entry / zoom)
+let transformDeadZone = 0;
 // eslint-disable-next-line prefer-const -- reassigned in animateStraighten
 let transformInitialElementX = 0;
 // eslint-disable-next-line prefer-const -- reassigned in animateStraighten
@@ -10751,9 +10766,10 @@ class App extends React.Component<AppProps, AppState> {
 
   private onStraightenHoldTimeout = () => {
     straightenTimerId = null;
-    // a point came after the timer was set: wait for the rest of the hold
+    // the pointer left the hold radius after the timer was set: wait for
+    // the rest of the new hold
     const remaining =
-      straightenLastPointAt + STRAIGHTEN_HOLD_TIME - performance.now();
+      straightenHoldStartedAt + STRAIGHTEN_HOLD_TIME - performance.now();
     if (remaining > 0) {
       straightenTimerId = window.setTimeout(
         this.onStraightenHoldTimeout,
@@ -10765,16 +10781,27 @@ class App extends React.Component<AppProps, AppState> {
     if (
       el &&
       el.type === "freedraw" &&
-      pathLength(el.points) >= STRAIGHTEN_MIN_LENGTH
+      pathLength(el.points) * this.state.zoom.value >= STRAIGHTEN_MIN_LENGTH &&
+      this.animateStraighten(el as NonDeleted<ExcalidrawFreeDrawElement>)
     ) {
-      this.animateStraighten(el as NonDeleted<ExcalidrawFreeDrawElement>);
+      return;
     }
+    // not straightened (too small on screen): the next try needs a full
+    // hold again, not a timer on every sample of this one
+    straightenHoldStartedAt = performance.now();
   };
 
-  private animateStraighten(element: NonDeleted<ExcalidrawFreeDrawElement>) {
-    const result = computeStraightenResult(element.points);
+  /** Starts the straighten animation; false when the stroke stays as drawn. */
+  private animateStraighten(
+    element: NonDeleted<ExcalidrawFreeDrawElement>,
+  ): boolean {
+    // billion-dollars#6066 (F5): thresholds are screen pixels at this zoom
+    const result = computeStraightenResult(
+      element.points,
+      this.state.zoom.value,
+    );
     if (!result) {
-      return;
+      return false;
     }
 
     isStraightening = true;
@@ -10876,11 +10903,102 @@ class App extends React.Component<AppProps, AppState> {
           ),
         );
         transformEntryPos = { x: cursorX, y: cursorY };
+        // billion-dollars#6066 (F4): the dead zone is screen pixels
+        const zoom = this.state.zoom.value;
+        transformDeadZone =
+          getStraightenTransformDeadZone(
+            transformInitialDist * zoom,
+            straightenHoldRadius || getStraightenHoldRadius(undefined),
+          ) / zoom;
         isStraightenTransforming = true;
+
+        // the pointer moved while the stroke was animating: apply the move
+        // now instead of losing it
+        const pending = straightenPendingCursor;
+        straightenPendingCursor = null;
+        if (pending) {
+          this.applyStraightenTransform(element, pending.x, pending.y);
+        }
       }
     };
 
+    straightenPendingCursor = null;
+    straightenHoldAnchor = null;
     straightenAnimationId = requestAnimationFrame(animate);
+    return true;
+  }
+
+  /**
+   * Rotate and scale the straightened stroke around its anchor so that the
+   * point where the hold ended follows the pointer (Procreate-style). Moves
+   * within the dead zone around that point leave the stroke as straightened.
+   */
+  private applyStraightenTransform(
+    element: NonDeleted<ExcalidrawFreeDrawElement>,
+    cursorX: number,
+    cursorY: number,
+  ) {
+    if (!transformAnchor || !transformInitialPoints) {
+      return;
+    }
+    if (transformEntryPos) {
+      const entryDist = Math.hypot(
+        cursorX - transformEntryPos.x,
+        cursorY - transformEntryPos.y,
+      );
+      if (entryDist < transformDeadZone) {
+        return;
+      }
+    }
+
+    const currentAngle = Math.atan2(
+      cursorY - transformAnchor.y,
+      cursorX - transformAnchor.x,
+    );
+    const currentDist = Math.max(
+      0.01,
+      Math.hypot(cursorX - transformAnchor.x, cursorY - transformAnchor.y),
+    );
+
+    const deltaAngle = currentAngle - transformInitialAngle;
+    const scale = getFreedrawTransformScale(currentDist, transformInitialDist);
+    const cos = Math.cos(deltaAngle);
+    const sin = Math.sin(deltaAngle);
+
+    // Anchor in local coords using INITIAL element position (stable across frames)
+    const anchorLocalX = transformAnchor.x - transformInitialElementX;
+    const anchorLocalY = transformAnchor.y - transformInitialElementY;
+
+    const newPoints = transformInitialPoints.map((p) => {
+      const dx = p[0] - anchorLocalX;
+      const dy = p[1] - anchorLocalY;
+      return pointFrom<LocalPoint>(
+        anchorLocalX + (dx * cos - dy * sin) * scale,
+        anchorLocalY + (dx * sin + dy * cos) * scale,
+      );
+    });
+
+    // Normalize points so min is at (0,0) and adjust element position
+    let minX = Infinity;
+    let minY = Infinity;
+    for (const p of newPoints) {
+      if (p[0] < minX) {
+        minX = p[0];
+      }
+      if (p[1] < minY) {
+        minY = p[1];
+      }
+    }
+    const normalizedPoints = newPoints.map((p) =>
+      pointFrom<LocalPoint>(p[0] - minX, p[1] - minY),
+    );
+
+    this.scene.mutateElement(element, {
+      x: transformInitialElementX + minX,
+      y: transformInitialElementY + minY,
+      points: normalizedPoints,
+    });
+    this.setState({ newElement: element });
   }
 
   public insertIframeElement = ({
@@ -12637,82 +12755,24 @@ class App extends React.Component<AppProps, AppState> {
             transformAnchor &&
             transformInitialPoints
           ) {
-            const cursorX = pointerCoords.x;
-            const cursorY = pointerCoords.y;
-
-            // Keep a small relative dead zone so tiny marks can still shrink.
-            if (transformEntryPos) {
-              const entryDist = Math.sqrt(
-                (cursorX - transformEntryPos.x) ** 2 +
-                  (cursorY - transformEntryPos.y) ** 2,
-              );
-              const entryThreshold = Math.min(
-                5,
-                Math.max(0.5, transformInitialDist * 0.25),
-              );
-              if (entryDist < entryThreshold) {
-                return;
-              }
-            }
-
-            const currentAngle = Math.atan2(
-              cursorY - transformAnchor.y,
-              cursorX - transformAnchor.x,
+            // the stroke follows the latest position, not the samples
+            pendingFreedrawPoints.length = 0;
+            this.applyStraightenTransform(
+              newElement as NonDeleted<ExcalidrawFreeDrawElement>,
+              pointerCoords.x,
+              pointerCoords.y,
             );
-            const currentDist = Math.max(
-              0.01,
-              Math.sqrt(
-                (cursorX - transformAnchor.x) ** 2 +
-                  (cursorY - transformAnchor.y) ** 2,
-              ),
-            );
-
-            const deltaAngle = currentAngle - transformInitialAngle;
-            const scale = getFreedrawTransformScale(
-              currentDist,
-              transformInitialDist,
-            );
-            const cos = Math.cos(deltaAngle);
-            const sin = Math.sin(deltaAngle);
-
-            // Anchor in local coords using INITIAL element position (stable across frames)
-            const anchorLocalX = transformAnchor.x - transformInitialElementX;
-            const anchorLocalY = transformAnchor.y - transformInitialElementY;
-
-            const newPoints = transformInitialPoints.map((p) => {
-              const dx = p[0] - anchorLocalX;
-              const dy = p[1] - anchorLocalY;
-              return pointFrom<LocalPoint>(
-                anchorLocalX + (dx * cos - dy * sin) * scale,
-                anchorLocalY + (dx * sin + dy * cos) * scale,
-              );
-            });
-
-            // Normalize points so min is at (0,0) and adjust element position
-            let minX = Infinity;
-            let minY = Infinity;
-            for (const p of newPoints) {
-              if (p[0] < minX) {
-                minX = p[0];
-              }
-              if (p[1] < minY) {
-                minY = p[1];
-              }
-            }
-            const normalizedPoints = newPoints.map((p) =>
-              pointFrom<LocalPoint>(p[0] - minX, p[1] - minY),
-            );
-
-            this.scene.mutateElement(newElement, {
-              x: transformInitialElementX + minX,
-              y: transformInitialElementY + minY,
-              points: normalizedPoints,
-            });
-            this.setState({ newElement });
             return;
           }
 
           if (isStraightening) {
+            // billion-dollars#6066 (F4): keep the latest position for the
+            // transform mode that starts when the animation ends
+            pendingFreedrawPoints.length = 0;
+            straightenPendingCursor = {
+              x: pointerCoords.x,
+              y: pointerCoords.y,
+            };
             return;
           }
 
@@ -12764,15 +12824,43 @@ class App extends React.Component<AppProps, AppState> {
               isStraightening = false;
               finishStraightenAnimation = null;
             }
+          }
 
-            // Straighten detection: the hold counts from the last new point.
-            // One timer per hold: it re-arms itself for the rest of the hold
-            // instead of being cleared and set again on every frame
-            straightenLastPointAt = performance.now();
+          // Straighten detection (billion-dollars#6066, F4): the hold counts
+          // from the last sample that left the hold radius around the anchor
+          // (screen px), not from the last new point: a pen tip held still
+          // still trembles and reports new points. One timer per hold: it
+          // re-arms itself for the rest of the hold instead of being cleared
+          // and set again on every frame
+          if (samples.length > 0) {
+            if (straightenHoldElementId !== newElement.id) {
+              straightenHoldElementId = newElement.id;
+              straightenHoldAnchor = null;
+            }
+            straightenHoldRadius = getStraightenHoldRadius(event.pointerType);
+            const radius = straightenHoldRadius / this.state.zoom.value;
+            const now = performance.now();
+            for (const sample of samples) {
+              if (
+                !straightenHoldAnchor ||
+                Math.hypot(
+                  sample.x - straightenHoldAnchor.x,
+                  sample.y - straightenHoldAnchor.y,
+                ) > radius
+              ) {
+                straightenHoldAnchor = { x: sample.x, y: sample.y };
+                straightenHoldStartedAt = now;
+              }
+            }
             if (straightenTimerId === null) {
               straightenTimerId = window.setTimeout(
                 this.onStraightenHoldTimeout,
-                STRAIGHTEN_HOLD_TIME,
+                Math.max(
+                  0,
+                  Math.ceil(
+                    straightenHoldStartedAt + STRAIGHTEN_HOLD_TIME - now,
+                  ),
+                ),
               );
             }
           }
@@ -13282,6 +13370,9 @@ class App extends React.Component<AppProps, AppState> {
           clearTimeout(straightenTimerId);
           straightenTimerId = null;
         }
+        straightenHoldAnchor = null;
+        straightenHoldElementId = null;
+        straightenPendingCursor = null;
         if (straightenAnimationId !== null) {
           cancelAnimationFrame(straightenAnimationId);
           straightenAnimationId = null;

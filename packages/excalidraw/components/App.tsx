@@ -9894,12 +9894,17 @@ class App extends React.Component<AppProps, AppState> {
       ),
       // we need to duplicate because we'll be updating this state
       lastCoords: { ...origin },
-      originalElements: this.scene
-        .getNonDeletedElements()
-        .reduce((acc, element) => {
-          acc.set(element.id, deepCopyElement(element));
-          return acc;
-        }, new Map() as PointerDownState["originalElements"]),
+      // sdamex #6066: the snapshot serves dragging, resizing, cropping and
+      // duplicating a selection, which a pen stroke never does (those paths
+      // need a selection-like tool). A deep copy of every element took
+      // ~35 ms (3000 strokes) out of the first frame of each stroke.
+      originalElements:
+        this.state.activeTool.type === "freedraw"
+          ? (new Map() as PointerDownState["originalElements"])
+          : this.scene.getNonDeletedElements().reduce((acc, element) => {
+              acc.set(element.id, deepCopyElement(element));
+              return acc;
+            }, new Map() as PointerDownState["originalElements"]),
       resize: {
         handleType: false,
         isResizing: false,

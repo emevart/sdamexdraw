@@ -671,6 +671,16 @@ let penModeTapCandidate: {
   y: number;
   time: number;
 } | null = null;
+// emevart/billion-dollars#6907: выделение на момент первого касания пальцем.
+// Pinch/pan двумя пальцами выделение не меняет: первый палец мог успеть его
+// снять или поменять (касание пустого места, выделение рамкой), поэтому с
+// приходом второго пальца и в конце жеста выделение возвращается к снимку.
+let touchGestureSelection: {
+  selectedElementIds: AppState["selectedElementIds"];
+  selectedGroupIds: AppState["selectedGroupIds"];
+  editingGroupId: AppState["editingGroupId"];
+} | null = null;
+let touchGestureWasMultiTouch = false;
 // Three independent settings sets for pencil, highlighter, and shapes
 type ToolSettings = {
   strokeWidth: number;
@@ -4278,6 +4288,21 @@ class App extends React.Component<AppProps, AppState> {
     event.stopPropagation();
   });
 
+  private restoreTouchGestureSelection() {
+    const snapshot = touchGestureSelection;
+    if (!snapshot) {
+      return;
+    }
+    this.setState((state) => ({
+      selectedElementIds: makeNextSelectedElementIds(
+        snapshot.selectedElementIds,
+        state,
+      ),
+      selectedGroupIds: snapshot.selectedGroupIds,
+      editingGroupId: snapshot.editingGroupId,
+    }));
+  }
+
   private static resetTapTwice() {
     didTapTwice = false;
     firstTapPosition = null;
@@ -4319,10 +4344,12 @@ class App extends React.Component<AppProps, AppState> {
         positions,
         liftedOk: new Map(),
       };
-      this.setState({
-        selectedElementIds: makeNextSelectedElementIds({}, this.state),
-        activeEmbeddable: null,
-      });
+      // #6907: жест двумя пальцами -- камера, не выделение. Раньше здесь
+      // выделение обнулялось, и pinch снимал выделение только что вставленной
+      // картинки. Возвращаем выделение, бывшее до первого пальца.
+      touchGestureWasMultiTouch = true;
+      this.restoreTouchGestureSelection();
+      this.setState({ activeEmbeddable: null });
     } else {
       twoFingerTouchStart = null;
     }
@@ -4419,17 +4446,19 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     this.resetContextMenuTimer();
+    // #6907: после жеста двумя пальцами выделение -- как до первого пальца,
+    // в том числе когда пальцы оторвались в одном кадре (touches пуст), а
+    // pointerup первого пальца успел снять выделение.
+    if (touchGestureWasMultiTouch) {
+      this.restoreTouchGestureSelection();
+    }
     if (event.touches.length > 0) {
-      this.setState({
-        previousSelectedElementIds: {},
-        selectedElementIds: makeNextSelectedElementIds(
-          this.state.previousSelectedElementIds,
-          this.state,
-        ),
-      });
+      this.setState({ previousSelectedElementIds: {} });
     } else {
       gesture.pointers.clear();
       activePenPointerIds.clear();
+      touchGestureSelection = null;
+      touchGestureWasMultiTouch = false;
     }
 
     // пальцев меньше двух -- touch-путь больше не ведёт жест
@@ -9006,6 +9035,17 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
 
+    // #6907: снимок выделения до первого пальца -- к нему жест двумя
+    // пальцами возвращает выделение (onTouchStart / onTouchEnd).
+    if (event.pointerType === "touch" && gesture.pointers.size === 0) {
+      touchGestureSelection = {
+        selectedElementIds: this.state.selectedElementIds,
+        selectedGroupIds: this.state.selectedGroupIds,
+        editingGroupId: this.state.editingGroupId,
+      };
+      touchGestureWasMultiTouch = false;
+    }
+
     this.updateGestureOnPointerDown(event);
 
     // if dragging element is freedraw and another pointerdown event occurs
@@ -9795,11 +9835,38 @@ class App extends React.Component<AppProps, AppState> {
             if (this.state.activeLockedId != null) {
               this.setState({ activeLockedId: null });
             }
+          } else if (
+            hitElement &&
+            isSelectionLikeTool(this.state.activeTool.type) &&
+            !this.state.viewModeEnabled
+          ) {
+            // emevart/billion-dollars#6907: с инструментом «указатель»
+            // короткий тап пальцем выделяет элемент сразу, как клик мышью.
+            // Раньше палец в pen mode не выделял, и выделить можно было только
+            // долгим нажатием (контекстное меню). С инструментом рисования
+            // палец по-прежнему камера и не выделяет.
+            this.setState((prevState) => ({
+              ...selectGroupsForSelectedElements(
+                {
+                  editingGroupId: null,
+                  selectedElementIds: { [hitElement.id]: true },
+                },
+                this.scene.getNonDeletedElements(),
+                prevState,
+                this,
+              ),
+              activeLockedId: null,
+              activeEmbeddable: null,
+              showHyperlinkPopup:
+                hitElement.link || isEmbeddableElement(hitElement)
+                  ? "info"
+                  : false,
+            }));
           } else if (hitElement && this.state.activeLockedId != null) {
-            // The finger still never selects, but a tap on another (unlocked)
-            // element must not leave a stale unlock affordance behind --
-            // desktop clears activeLockedId on any pointerup off the locked
-            // element.
+            // With a drawing tool the finger still never selects, but a tap
+            // on another (unlocked) element must not leave a stale unlock
+            // affordance behind -- desktop clears activeLockedId on any
+            // pointerup off the locked element.
             this.setState({ activeLockedId: null });
           }
         }

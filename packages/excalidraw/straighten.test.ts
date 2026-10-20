@@ -6,6 +6,7 @@ import {
   computeStraightenResult,
   getAutoCloseThreshold,
   getFreedrawTransformScale,
+  getStraightenHoldRadius,
 } from "./straighten";
 
 describe("freedraw straightening", () => {
@@ -162,5 +163,24 @@ describe("freedraw straightening: thresholds in screen pixels (billion-dollars #
         ).toBeLessThan(1e-6);
       }
     }
+  });
+});
+
+// sdamex billion-dollars#6066 (F4): how far the pointer may wander and still
+// hold for straightening, in screen pixels. A finger tremors more than a pen
+// tip or a mouse.
+describe("freedraw straightening: hold radius by pointer type (billion-dollars #6066)", () => {
+  it("is 5 px for a finger", () => {
+    expect(getStraightenHoldRadius("touch")).toBe(5);
+  });
+
+  it.each(["mouse", "pen", "", undefined])("is 3 px for %j", (pointerType) => {
+    expect(getStraightenHoldRadius(pointerType)).toBe(3);
+  });
+
+  it("is wider for a finger than for a pen", () => {
+    expect(getStraightenHoldRadius("touch")).toBeGreaterThan(
+      getStraightenHoldRadius("pen"),
+    );
   });
 });

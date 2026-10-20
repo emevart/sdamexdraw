@@ -5,6 +5,9 @@ import {
   STRAIGHTEN_CLOSE_THRESHOLD,
   STRAIGHTEN_CORNER_WINDOW,
   STRAIGHTEN_CORNER_ANGLE,
+  STRAIGHTEN_MIN_SCREEN_SIZE,
+  STRAIGHTEN_MOVE_THRESHOLD,
+  STRAIGHTEN_MOVE_THRESHOLD_TOUCH,
 } from "@excalidraw/common";
 
 import type { LocalPoint } from "@excalidraw/math";
@@ -50,21 +53,18 @@ export const pathLength = (points: readonly LocalPoint[]): number => {
   return len;
 };
 
-const AUTO_CLOSE_MIN_THRESHOLD = 1;
+// billion-dollars#6066 (F5): every distance threshold of straightening is
+// screen pixels. The same handwriting is 2x larger in scene units at zoom 0.5
+// and 3x smaller at zoom 3; scene-unit thresholds closed small letters when
+// zoomed out and left large shapes open when zoomed in.
+
+const AUTO_CLOSE_MIN_THRESHOLD = 1; // screen px
 const AUTO_CLOSE_MAX_RATIO = 0.12;
 
-/**
- * Keep the close gesture proportional to the mark size. A fixed 30px gap
- * makes compact strokes look closed even when the user only draws a small
- * open mark.
- */
-export const getAutoCloseThreshold = (
-  points: readonly LocalPoint[],
-): number => {
-  if (points.length === 0) {
-    return AUTO_CLOSE_MIN_THRESHOLD;
-  }
+const safeZoom = (zoom: number) =>
+  Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
 
+const getPointsBounds = (points: readonly LocalPoint[]) => {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -76,13 +76,70 @@ export const getAutoCloseThreshold = (
     maxX = Math.max(maxX, x);
     maxY = Math.max(maxY, y);
   }
+  return { width: maxX - minX, height: maxY - minY };
+};
 
-  const diagonal = Math.hypot(maxX - minX, maxY - minY);
-  return Math.min(
-    STRAIGHTEN_CLOSE_THRESHOLD,
-    Math.max(AUTO_CLOSE_MIN_THRESHOLD, diagonal * AUTO_CLOSE_MAX_RATIO),
+/** The longer side of the stroke's bounding box on screen, px. */
+export const getStrokeScreenSize = (
+  points: readonly LocalPoint[],
+  zoom: number,
+): number => {
+  if (points.length === 0) {
+    return 0;
+  }
+  const { width, height } = getPointsBounds(points);
+  return Math.max(width, height) * safeZoom(zoom);
+};
+
+/**
+ * Keep the close gesture proportional to the mark size. A fixed 30px gap
+ * makes compact strokes look closed even when the user only draws a small
+ * open mark. Measured on screen; returned in scene units.
+ */
+export const getAutoCloseThreshold = (
+  points: readonly LocalPoint[],
+  zoom: number = 1,
+): number => {
+  const z = safeZoom(zoom);
+  if (points.length === 0) {
+    return AUTO_CLOSE_MIN_THRESHOLD / z;
+  }
+
+  const { width, height } = getPointsBounds(points);
+  const diagonal = Math.hypot(width, height) * z;
+  return (
+    Math.min(
+      STRAIGHTEN_CLOSE_THRESHOLD,
+      Math.max(AUTO_CLOSE_MIN_THRESHOLD, diagonal * AUTO_CLOSE_MAX_RATIO),
+    ) / z
   );
 };
+
+/**
+ * How far (screen px) the pointer may wander and still hold for straightening:
+ * a pen tip or a finger is never perfectly still (billion-dollars#6066, F4).
+ */
+export const getStraightenHoldRadius = (pointerType: string | undefined) =>
+  pointerType === "touch"
+    ? STRAIGHTEN_MOVE_THRESHOLD_TOUCH
+    : STRAIGHTEN_MOVE_THRESHOLD;
+
+const TRANSFORM_DEAD_ZONE_RATIO = 0.25;
+
+/**
+ * Dead zone (screen px) of the rotate/scale mode after straightening: moves
+ * closer than this to where the hold ended leave the shape as straightened.
+ * A quarter of the anchor distance, at least the hold radius (the tremor of
+ * the hold itself) and at most twice that, so a small mark can still shrink.
+ */
+export const getStraightenTransformDeadZone = (
+  anchorDistanceOnScreen: number,
+  holdRadius: number,
+) =>
+  Math.min(
+    2 * holdRadius,
+    Math.max(holdRadius, anchorDistanceOnScreen * TRANSFORM_DEAD_ZONE_RATIO),
+  );
 
 export const FREEDRAW_TRANSFORM_MIN_SCALE = 0.01;
 export const FREEDRAW_TRANSFORM_MAX_SCALE = 100;
@@ -413,11 +470,20 @@ export type StraightenResult = {
  * 1. If gap < a size-relative threshold → contract to close (ease-out pull)
  * 2. If open and low deviation → straighten to line
  * 3. Otherwise → detect corners, smooth segments between them
+ *
+ * Distances are judged on screen at `zoom`: a stroke smaller than
+ * STRAIGHTEN_MIN_SCREEN_SIZE on screen is handwriting and stays as drawn.
  */
 export const computeStraightenResult = (
   points: readonly LocalPoint[],
+  zoom: number = 1,
 ): StraightenResult | null => {
   if (points.length < 2) {
+    return null;
+  }
+
+  const z = safeZoom(zoom);
+  if (getStrokeScreenSize(points, z) < STRAIGHTEN_MIN_SCREEN_SIZE) {
     return null;
   }
 
@@ -425,13 +491,16 @@ export const computeStraightenResult = (
   const end = points[points.length - 1];
   const gapDist = pointDistance(start, end);
   const totalLen = pathLength(points);
-  const closeThreshold = getAutoCloseThreshold(points);
+  const closeThreshold = getAutoCloseThreshold(points, z);
 
   // Step 1: Closure detection — contract if gap is small
   let isClosed = false;
   let workingPoints: LocalPoint[];
 
-  if (gapDist < closeThreshold && totalLen > STRAIGHTEN_CLOSE_THRESHOLD * 3) {
+  if (
+    gapDist < closeThreshold &&
+    totalLen * z > STRAIGHTEN_CLOSE_THRESHOLD * 3
+  ) {
     workingPoints = contractToClose(points);
     isClosed = true;
   } else {
@@ -444,7 +513,7 @@ export const computeStraightenResult = (
       workingPoints[0],
       workingPoints[workingPoints.length - 1],
     );
-    if (lineLen < 1) {
+    if (lineLen * z < 1) {
       return null; // degenerate
     }
     const deviation = maxDeviationFromLine(workingPoints);

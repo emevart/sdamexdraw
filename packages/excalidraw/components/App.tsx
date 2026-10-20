@@ -10765,14 +10765,18 @@ class App extends React.Component<AppProps, AppState> {
     if (
       el &&
       el.type === "freedraw" &&
-      pathLength(el.points) >= STRAIGHTEN_MIN_LENGTH
+      pathLength(el.points) * this.state.zoom.value >= STRAIGHTEN_MIN_LENGTH
     ) {
       this.animateStraighten(el as NonDeleted<ExcalidrawFreeDrawElement>);
     }
   };
 
   private animateStraighten(element: NonDeleted<ExcalidrawFreeDrawElement>) {
-    const result = computeStraightenResult(element.points);
+    // billion-dollars#6066 (F5): thresholds are screen pixels at this zoom
+    const result = computeStraightenResult(
+      element.points,
+      this.state.zoom.value,
+    );
     if (!result) {
       return;
     }

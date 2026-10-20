@@ -670,7 +670,26 @@ let penModeTapCandidate: {
   x: number;
   y: number;
   time: number;
+  /** наибольший радиус пятна касания по PointerEvent width/height, px */
+  contactRadius: number;
 } | null = null;
+// emevart/billion-dollars#6907: защита от ладони для тапа-выделения в pen mode.
+// На iPad ладонь лежит на экране между штрихами, а перо в этот момент в
+// воздухе (activePenPointerIds пуст), поэтому короткое касание ладонью
+// выглядит как тап пальцем. Тап выделяет элемент, только если перо молчит
+// дольше PEN_MODE_TAP_PALM_GUARD_MS (pointerdown/move/up пера) и пятно
+// касания не шире PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX. Иначе касание по
+// элементу игнорируется, как до #6907.
+const PEN_MODE_TAP_PALM_GUARD_MS = 500;
+// Радиус пятна: Touch.radiusX/radiusY или половина PointerEvent width/height.
+// Кончик пальца -- примерно 10-25 px, ладонь заметно больше. 0 или нет
+// данных (браузер не отдаёт геометрию) -- считаем пятно маленьким.
+const PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX = 30;
+let lastPenActivityTime = -Infinity;
+// наибольший радиус прямых касаний последнего touchstart, px
+let lastTouchStartContactRadius = 0;
+const pointerContactRadius = (event: { width?: number; height?: number }) =>
+  Math.max(event.width || 0, event.height || 0) / 2;
 // emevart/billion-dollars#6907: выделение на момент первого касания пальцем.
 // Pinch/pan двумя пальцами выделение не меняет: первый палец мог успеть его
 // снять или поменять (касание пустого места, выделение рамкой), поэтому с
@@ -4347,6 +4366,10 @@ class App extends React.Component<AppProps, AppState> {
         directTouches.push(t);
       }
     }
+    lastTouchStartContactRadius = Math.max(
+      0,
+      ...directTouches.map((t) => Math.max(t.radiusX || 0, t.radiusY || 0)),
+    );
     if (activePenPointerIds.size === 0 && directTouches.length === 2) {
       // Record two-finger touch start for tap detection on touchend
       const positions = new Map<number, { x: number; y: number }>();
@@ -5034,6 +5057,7 @@ class App extends React.Component<AppProps, AppState> {
 
     if (event.pointerType === "pen") {
       activePenPointerIds.delete(event.pointerId);
+      lastPenActivityTime = Date.now();
     }
 
     const wasMultiTouchGesture = gesture.pointers.size >= 2;
@@ -7963,6 +7987,9 @@ class App extends React.Component<AppProps, AppState> {
   ) => {
     this.savePointer(event.clientX, event.clientY, this.state.cursorButton);
     this.lastPointerMoveEvent = event.nativeEvent;
+    if (event.pointerType === "pen") {
+      lastPenActivityTime = Date.now();
+    }
     const scenePointer = viewportCoordsToSceneCoords(event, this.state);
     const { x: scenePointerX, y: scenePointerY } = scenePointer;
     this.lastPointerMoveCoords = {
@@ -9039,6 +9066,7 @@ class App extends React.Component<AppProps, AppState> {
 
     if (event.pointerType === "pen") {
       activePenPointerIds.add(event.pointerId);
+      lastPenActivityTime = Date.now();
       // #6907: перо начинает своё действие; снимок жеста пальцами устарел, а
       // touchend от Apple Pencil (touchType "stylus") не должен его вернуть
       App.clearTouchGestureSelection();
@@ -9625,6 +9653,7 @@ class App extends React.Component<AppProps, AppState> {
             x: event.clientX,
             y: event.clientY,
             time: Date.now(),
+            contactRadius: pointerContactRadius(event),
           }
         : null;
 
@@ -9853,7 +9882,14 @@ class App extends React.Component<AppProps, AppState> {
           } else if (
             hitElement &&
             isSelectionLikeTool(this.state.activeTool.type) &&
-            !this.state.viewModeEnabled
+            !this.state.viewModeEnabled &&
+            // защита от ладони (см. PEN_MODE_TAP_PALM_GUARD_MS)
+            tap.time - lastPenActivityTime > PEN_MODE_TAP_PALM_GUARD_MS &&
+            Math.max(
+              tap.contactRadius,
+              pointerContactRadius(upPointerEvent),
+              lastTouchStartContactRadius,
+            ) <= PEN_MODE_TAP_MAX_CONTACT_RADIUS_PX
           ) {
             // emevart/billion-dollars#6907: с инструментом «указатель»
             // короткий тап пальцем выделяет элемент сразу, как клик мышью.

@@ -439,9 +439,125 @@ describe("#6907 снимок выделения не переживает жес
       selectedGroupIds: {},
     });
 
+    // перо предыдущего теста было только что: защита от ладони
+    const later = Date.now() + 10_000;
+    vi.spyOn(Date, "now").mockReturnValue(later);
     tap(350, 150);
+    vi.restoreAllMocks();
 
     expect(h.state.editingGroupId).toBe("g");
     expectOnlySelected(b);
+  });
+});
+
+describe("#6907 защита от ладони: тап пальцем в pen mode", () => {
+  let now = 0;
+
+  beforeEach(async () => {
+    unmountComponent();
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+    Pointer.resetAll();
+    resetGestureState();
+    API.setAppState({ penMode: true, penDetected: true });
+    selectTool("selection");
+    // модульная метка последнего касания пером живёт между тестами:
+    // начинаем заведомо позже неё (и позже часов предыдущего теста)
+    now = Math.max(now, Date.now()) + 10_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** штрих пером по пустому месту, затем перо в воздухе */
+  const penStroke = () => {
+    const pen = new Pointer("pen", 42);
+    pen.downAt(600, 600);
+    pen.moveTo(640, 620);
+    pen.upAt(640, 620);
+  };
+
+  /** касание с геометрией пятна: PointerEvent width/height, Touch radiusX/Y */
+  const sizedTap = (
+    x: number,
+    y: number,
+    size: { width?: number; height?: number; radius?: number },
+  ) => {
+    const pointer = {
+      clientX: x,
+      clientY: y,
+      pointerType: "touch",
+      pointerId: 33,
+      width: size.width,
+      height: size.height,
+    };
+    const touch = {
+      identifier: 7,
+      clientX: x,
+      clientY: y,
+      touchType: "direct",
+      radiusX: size.radius,
+      radiusY: size.radius,
+    } as unknown as Touch;
+    fireEvent.pointerDown(GlobalTestState.interactiveCanvas, pointer);
+    fireEvent.touchStart(GlobalTestState.interactiveCanvas, {
+      touches: [touch],
+      changedTouches: [touch],
+    });
+    fireEvent.pointerUp(GlobalTestState.interactiveCanvas, pointer);
+    fireEvent.touchEnd(GlobalTestState.interactiveCanvas, {
+      touches: [],
+      changedTouches: [touch],
+    });
+  };
+
+  it("ладонь через 200 мс после пера не выделяет", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    penStroke();
+    now += 200;
+    tap(200, 170);
+
+    expect(selectedIds()).toEqual([]);
+  });
+
+  it("палец через 800 мс после пера выделяет", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    penStroke();
+    now += 800;
+    tap(200, 170);
+
+    expectOnlySelected(image);
+  });
+
+  it("широкое пятно PointerEvent (ладонь) не выделяет", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    sizedTap(200, 170, { width: 120, height: 120 });
+
+    expect(selectedIds()).toEqual([]);
+  });
+
+  it("широкое пятно Touch.radiusX (ладонь) не выделяет", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    sizedTap(200, 170, { radius: 60 });
+
+    expect(selectedIds()).toEqual([]);
+  });
+
+  it("маленькое пятно пальца выделяет", () => {
+    const image = createImage();
+    API.setElements([image]);
+
+    sizedTap(200, 170, { width: 30, height: 30, radius: 15 });
+
+    expectOnlySelected(image);
   });
 });

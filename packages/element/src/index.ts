@@ -74,6 +74,7 @@ export * from "./embeddable";
 export * from "./flowchart";
 export * from "./arrows/focus";
 export * from "./fractionalIndex";
+export * from "./freedrawAppend";
 export * from "./freedrawInk";
 export * from "./freedrawLive";
 export * from "./frame";

@@ -275,6 +275,7 @@ import {
   isEligibleFrameChildType,
   getBindingStrategyForDraggingBindingElementEndpoints,
   isNonDeletedElement,
+  appendFreedrawPoints,
 } from "@excalidraw/element";
 
 import type { GlobalPoint, LocalPoint, Radians } from "@excalidraw/math";
@@ -775,6 +776,8 @@ const mergeToolStrokeSettings = (
 });
 
 let straightenTimerId: number | null = null;
+// performance.now() of the last point appended to the stroke being drawn
+let straightenLastPointAt = 0;
 let straightenAnimationId: number | null = null;
 let isStraightening = false;
 // Puts the stroke of the running straighten animation into its target shape;
@@ -10746,6 +10749,28 @@ class App extends React.Component<AppProps, AppState> {
     });
   };
 
+  private onStraightenHoldTimeout = () => {
+    straightenTimerId = null;
+    // a point came after the timer was set: wait for the rest of the hold
+    const remaining =
+      straightenLastPointAt + STRAIGHTEN_HOLD_TIME - performance.now();
+    if (remaining > 0) {
+      straightenTimerId = window.setTimeout(
+        this.onStraightenHoldTimeout,
+        Math.ceil(remaining),
+      );
+      return;
+    }
+    const el = this.state.newElement;
+    if (
+      el &&
+      el.type === "freedraw" &&
+      pathLength(el.points) >= STRAIGHTEN_MIN_LENGTH
+    ) {
+      this.animateStraighten(el as NonDeleted<ExcalidrawFreeDrawElement>);
+    }
+  };
+
   private animateStraighten(element: NonDeleted<ExcalidrawFreeDrawElement>) {
     const result = computeStraightenResult(element.points);
     if (!result) {
@@ -12724,31 +12749,15 @@ class App extends React.Component<AppProps, AppState> {
           }
 
           if (appendedPoints.length > 0) {
-            const pressures = newElement.simulatePressure
-              ? newElement.pressures
-              : [...newElement.pressures, ...appendedPressures];
-
-            this.scene.mutateElement(
-              newElement,
-              {
-                points: [...points, ...appendedPoints],
-                pressures,
-              },
-              {
-                informMutation: false,
-                isDragging: false,
-              },
-            );
+            // sdamex billion-dollars#6066: pushes into arrays the stroke
+            // owns, without copying all points (and pressures) every frame;
+            // bumps the version and drops the cached shape like mutateElement
+            appendFreedrawPoints(newElement, appendedPoints, appendedPressures);
 
             this.setState({
               newElement,
             });
 
-            // Straighten detection: reset timer on each significant move
-            if (straightenTimerId !== null) {
-              clearTimeout(straightenTimerId);
-              straightenTimerId = null;
-            }
             if (straightenAnimationId !== null) {
               cancelAnimationFrame(straightenAnimationId);
               straightenAnimationId = null;
@@ -12756,19 +12765,16 @@ class App extends React.Component<AppProps, AppState> {
               finishStraightenAnimation = null;
             }
 
-            straightenTimerId = window.setTimeout(() => {
-              straightenTimerId = null;
-              const el = this.state.newElement;
-              if (
-                el &&
-                el.type === "freedraw" &&
-                pathLength(el.points) >= STRAIGHTEN_MIN_LENGTH
-              ) {
-                this.animateStraighten(
-                  el as NonDeleted<ExcalidrawFreeDrawElement>,
-                );
-              }
-            }, STRAIGHTEN_HOLD_TIME);
+            // Straighten detection: the hold counts from the last new point.
+            // One timer per hold: it re-arms itself for the rest of the hold
+            // instead of being cleared and set again on every frame
+            straightenLastPointAt = performance.now();
+            if (straightenTimerId === null) {
+              straightenTimerId = window.setTimeout(
+                this.onStraightenHoldTimeout,
+                STRAIGHTEN_HOLD_TIME,
+              );
+            }
           }
         } else if (
           isLinearElement(newElement) &&

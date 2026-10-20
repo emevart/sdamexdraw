@@ -25,6 +25,7 @@ import {
   applyDarkModeFilter,
   isSafari,
   isTestEnv,
+  isTransparent,
 } from "@excalidraw/common";
 
 import type {
@@ -554,10 +555,10 @@ const drawElementOnCanvas = (
             context.lineCap = "round";
             context.lineJoin = "round";
             context.setLineDash(getFreedrawDashArray(element));
-            context.stroke(new Path2D(shape));
+            context.stroke(getFreedrawSvgPath2D(element, shape));
           } else {
             context.fillStyle = color;
-            context.fill(new Path2D(shape));
+            context.fill(getFreedrawSvgPath2D(element, shape));
           }
         } else {
           rc.draw(shape);
@@ -705,6 +706,78 @@ export const elementWithCanvasCache = new WeakMap<
   ExcalidrawElement,
   ExcalidrawElementWithCanvas
 >();
+
+/**
+ * sdamex emevart/billion-dollars#6066: Path2D of the SVG path of a pen stroke
+ * (legacy ink, dashed pen). A stroke drawn without its element canvas fills
+ * it on every frame, so the parsed path is kept beside the element; it is
+ * rebuilt when ShapeCache hands out another SVG path.
+ */
+const freedrawSvgPath2DCache = new WeakMap<
+  ExcalidrawFreeDrawElement,
+  { svgPath: string; path: Path2D }
+>();
+
+const getFreedrawSvgPath2D = (
+  element: ExcalidrawFreeDrawElement,
+  svgPath: string,
+) => {
+  const cached = freedrawSvgPath2DCache.get(element);
+  if (cached && cached.svgPath === svgPath) {
+    return cached.path;
+  }
+  const path = new Path2D(svgPath);
+  freedrawSvgPath2DCache.set(element, { svgPath, path });
+  return path;
+};
+
+/**
+ * sdamex emevart/billion-dollars#6066: above this zoom a pen stroke is drawn
+ * from its cached path straight onto the scene canvas, without an element
+ * canvas. The element canvas is bbox × dpr × zoom (+ padding `strokeWidth ×
+ * 12 × zoom`), so its memory grows with zoom²: 2000 strokes at zoom 3 and 5
+ * held about 1.9 and 5.3 GB (dpr 2), and every stroke entering the view while
+ * panning was rasterized in that frame. At zoom 1 and below the element
+ * canvas stays: a blit is cheaper than a fill, and the canvas is small.
+ */
+export const FREEDRAW_ELEMENT_CANVAS_MAX_ZOOM = 1;
+
+const shouldDrawFreedrawWithoutCanvas = (
+  element: ExcalidrawFreeDrawElement,
+  context: CanvasRenderingContext2D,
+  appState: StaticCanvasAppState | InteractiveCanvasAppState,
+) =>
+  appState.zoom.value > FREEDRAW_ELEMENT_CANVAS_MAX_ZOOM &&
+  // a translucent closed stroke with a fill: through the element canvas the
+  // fill and the ink are composed first and faded together; drawn directly
+  // they would be faded one by one and the ink over the fill would show
+  // through. Keep the element canvas for that rare case.
+  (context.globalAlpha >= 1 || isTransparent(element.backgroundColor));
+
+/**
+ * A pen stroke in scene coordinates on the target context: as the export
+ * draws it, rotated around the centre of its bounds.
+ */
+const drawFreedrawInScene = (
+  element: NonDeleted<ExcalidrawFreeDrawElement>,
+  elementsMap: RenderableElementsMap,
+  rc: RoughCanvas,
+  context: CanvasRenderingContext2D,
+  renderConfig: StaticCanvasRenderConfig,
+  appState: StaticCanvasAppState | InteractiveCanvasAppState,
+) => {
+  const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
+  const cx = (x1 + x2) / 2 + appState.scrollX;
+  const cy = (y1 + y2) / 2 + appState.scrollY;
+  const shiftX = (x2 - x1) / 2 - (element.x - x1);
+  const shiftY = (y2 - y1) / 2 - (element.y - y1);
+  context.save();
+  context.translate(cx, cy);
+  context.rotate(element.angle);
+  context.translate(-shiftX, -shiftY);
+  drawElementOnCanvas(element, rc, context, renderConfig);
+  context.restore();
+};
 
 /**
  * sdamex: per-pass budget for re-rasterizing cached element canvases after a
@@ -1037,18 +1110,18 @@ export const renderElement = (
       break;
     }
     case "freedraw": {
-      if (renderConfig.isExporting) {
-        const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
-        const cx = (x1 + x2) / 2 + appState.scrollX;
-        const cy = (y1 + y2) / 2 + appState.scrollY;
-        const shiftX = (x2 - x1) / 2 - (element.x - x1);
-        const shiftY = (y2 - y1) / 2 - (element.y - y1);
-        context.save();
-        context.translate(cx, cy);
-        context.rotate(element.angle);
-        context.translate(-shiftX, -shiftY);
-        drawElementOnCanvas(element, rc, context, renderConfig);
-        context.restore();
+      if (
+        renderConfig.isExporting ||
+        shouldDrawFreedrawWithoutCanvas(element, context, appState)
+      ) {
+        drawFreedrawInScene(
+          element,
+          elementsMap,
+          rc,
+          context,
+          renderConfig,
+          appState,
+        );
       } else {
         const elementWithCanvas = generateElementWithCanvas(
           element,

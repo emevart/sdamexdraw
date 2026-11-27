@@ -40,6 +40,22 @@ const selectTool = (type: "freedraw" | "selection") => {
 const selectFreedrawTool = () => selectTool("freedraw");
 
 describe("tablet input policy: palm rejection (pen contact makes touch inert)", () => {
+  const originalResizeObserver = (global as any).ResizeObserver;
+
+  beforeAll(() => {
+    (global as any).ResizeObserver =
+      originalResizeObserver ||
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      };
+  });
+
+  afterAll(() => {
+    (global as any).ResizeObserver = originalResizeObserver;
+  });
+
   beforeEach(async () => {
     unmountComponent();
     await render(<Excalidraw handleKeyboardGlobally={true} />);
@@ -111,6 +127,59 @@ describe("tablet input policy: palm rejection (pen contact makes touch inert)", 
     finger1.upAt(350, 350);
 
     expect(h.state.zoom.value).toBe(zoomBefore);
+  });
+
+  it("palm lift mid-stroke before pen lifts does not truncate or finalize the pen stroke (#5706)", async () => {
+    selectFreedrawTool();
+    API.setAppState({ penMode: true, penDetected: true });
+
+    pen.downAt(100, 100);
+    pen.moveTo(120, 120);
+    palm.downAt(320, 420);
+    pen.moveTo(140, 140);
+    palm.upAt(320, 420); // palm lifts BEFORE pen
+    pen.moveTo(180, 180);
+    pen.moveTo(220, 220);
+    pen.upAt(220, 220);
+
+    expect(freedrawElements().length).toBe(1);
+    const points = freedrawElements()[0].points;
+    const last = points[points.length - 1];
+    // stroke starts at (100, 100), so last point relative to origin is (~120, ~120)
+    expect(last[0]).toBeCloseTo(120, 0);
+    expect(last[1]).toBeCloseTo(120, 0);
+  });
+
+  it("palm contact during pen stroke does not close active popup or capture pointer (#5706)", async () => {
+    selectFreedrawTool();
+    API.setAppState({
+      penMode: true,
+      penDetected: true,
+      openPopup: "elementBackground",
+    });
+
+    const captureSpy = vi.spyOn(
+      GlobalTestState.interactiveCanvas,
+      "setPointerCapture",
+    );
+
+    pen.downAt(100, 100);
+    pen.moveTo(120, 120);
+    captureSpy.mockClear();
+
+    API.setAppState({ openPopup: "elementBackground" });
+    palm.downAt(320, 420);
+
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(h.state.openPopup).toBe("elementBackground");
+
+    pen.moveTo(160, 160);
+    pen.upAt(160, 160);
+    palm.upAt(320, 420);
+    captureSpy.mockRestore();
+
+    expect(freedrawElements().length).toBe(1);
+    expect(freedrawElements()[0].points.length).toBeGreaterThanOrEqual(3);
   });
 });
 

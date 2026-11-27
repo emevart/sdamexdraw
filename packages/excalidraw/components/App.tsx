@@ -500,6 +500,7 @@ import { AppStateObserver, type OnStateChange } from "./AppStateObserver";
 
 import { findShapeByEvent } from "./shapes";
 
+import { AboveEmbeddablesHitLayer } from "./aboveEmbeddablesHit";
 import UnlockPopup from "./UnlockPopup";
 
 import type { SolidPresetStyles } from "../shapePresets/solidFactory";
@@ -796,8 +797,6 @@ let isStraightening = false;
 // Puts the stroke of the running straighten animation into its target shape;
 // set while the animation runs, so a release mid-animation can finish on it.
 let finishStraightenAnimation: (() => boolean) | null = null;
-// eslint-disable-next-line prefer-const -- reassigned in animateStraighten/pointerUp
-let wasStraightened = false;
 
 let isStraightenTransforming = false;
 let transformAnchor: { x: number; y: number } | null = null;
@@ -2991,6 +2990,31 @@ class App extends React.Component<AppProps, AppState> {
                             className="excalidraw__canvas-wrapper"
                             ref={this.mountInteractiveVisualCanvas}
                           />
+                          {this.state.activeTool.type === "selection" &&
+                            !this.state.viewModeEnabled &&
+                            !this.state.editingTextElement &&
+                            !this.state.selectedElementsAreBeingDragged &&
+                            !this.state.selectionElement &&
+                            !this.state.resizingElement &&
+                            !this.state.isResizing &&
+                            !this.state.isRotating &&
+                            !this.state.isCropping && (
+                              <AboveEmbeddablesHitLayer
+                                visibleElements={visibleElements}
+                                allElementsMap={allElementsMap}
+                                appState={this.state}
+                                onPointerDown={(event) =>
+                                  this.handleCanvasPointerDown(
+                                    event as unknown as React.PointerEvent<HTMLElement>,
+                                  )
+                                }
+                                onPointerUp={(event) =>
+                                  this.handleCanvasPointerUp(
+                                    event as unknown as React.PointerEvent<HTMLCanvasElement>,
+                                  )
+                                }
+                              />
+                            )}
                         </div>
                       </ExcalidrawElementsContext.Provider>
                     </ExcalidrawAppStateContext.Provider>
@@ -9013,6 +9037,13 @@ class App extends React.Component<AppProps, AppState> {
   private handleCanvasPointerDown = (
     event: React.PointerEvent<HTMLElement>,
   ) => {
+    if (event.pointerType === "touch" && activePenPointerIds.size > 0) {
+      // Palm rejection (#5706): while a pen is on the surface, touch contacts are
+      // palm. Return before setPointerCapture / maybeCleanupAfterMissingPointerUp /
+      // popup cleanup so touching the surface never aborts an active pen stroke.
+      return;
+    }
+
     const selectedElements = this.scene.getSelectedElements(this.state);
 
     // If Ctrl is not held, ensure isBindingEnabled reflects the user preference.
@@ -9030,11 +9061,21 @@ class App extends React.Component<AppProps, AppState> {
       y: scenePointerY,
     };
 
-    const target = event.target as HTMLElement;
+    const rawTarget = event.target as Element | null;
+    const captureTarget =
+      this.interactiveCanvas &&
+      rawTarget !== this.interactiveCanvas &&
+      rawTarget?.closest?.(".excalidraw__above-embeddables-hit")
+        ? this.interactiveCanvas
+        : rawTarget;
     // capture subsequent pointer events to the canvas
     // this makes other elements non-interactive until pointer up
-    if (target.setPointerCapture) {
-      target.setPointerCapture(event.pointerId);
+    if (captureTarget?.setPointerCapture) {
+      try {
+        captureTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // synthetic pointer events in tests may not map to an active pointer
+      }
     }
 
     // Уборка получает событие, чтобы адресат решил по pointerId, его ли это
@@ -9093,12 +9134,6 @@ class App extends React.Component<AppProps, AppState> {
       // #6907: перо начинает своё действие; снимок жеста пальцами устарел, а
       // touchend от Apple Pencil (touchType "stylus") не должен его вернуть
       App.clearTouchGestureSelection();
-    } else if (event.pointerType === "touch" && activePenPointerIds.size > 0) {
-      // Palm rejection: while a pen is on the surface, touch contacts are
-      // palm. Ignore them entirely -- they must not cancel the ongoing pen
-      // stroke (the freedraw spike-discard block below), join the gesture,
-      // or start a pan.
-      return;
     }
 
     // #6907: снимок выделения до первого пальца -- к нему жест двумя
@@ -10090,7 +10125,7 @@ class App extends React.Component<AppProps, AppState> {
     pointerDownState.lastCoords.y = event.clientY;
     const onPointerMove = withBatchedUpdatesThrottled((event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) {
+      if (!(target instanceof Element)) {
         return;
       }
 
@@ -10300,25 +10335,50 @@ class App extends React.Component<AppProps, AppState> {
           }
         }
 
-        const allHitElements = this.getElementsAtPosition(
+        const aboveEmbeddableHitId =
+          event.target instanceof Element
+            ? event.target
+                .closest?.("[data-hit-element-id]")
+                ?.getAttribute("data-hit-element-id") ?? null
+            : null;
+        const aboveEmbeddableHitElement = aboveEmbeddableHitId
+          ? this.scene.getNonDeletedElementsMap().get(aboveEmbeddableHitId) ??
+            null
+          : null;
+        const resolvedAboveHit =
+          aboveEmbeddableHitElement &&
+          !aboveEmbeddableHitElement.locked &&
+          !isIframeLikeElement(aboveEmbeddableHitElement)
+            ? aboveEmbeddableHitElement
+            : null;
+
+        const baseHitElements = this.getElementsAtPosition(
           pointerDownState.origin.x,
           pointerDownState.origin.y,
           {
             includeLockedElements: true,
           },
         );
+        const allHitElements = resolvedAboveHit
+          ? [
+              ...baseHitElements.filter((e) => e.id !== resolvedAboveHit.id),
+              resolvedAboveHit,
+            ]
+          : baseHitElements;
         const unlockedHitElements = allHitElements.filter((e) => !e.locked);
 
         // Cannot set preferSelected in getElementAtPosition as we do in pointer move; consider:
         // A & B: both unlocked, A selected, B on top, A & B overlaps in some way
         // we want to select B when clicking on the overlapping area
-        const hitElementMightBeLocked = this.getElementAtPosition(
-          pointerDownState.origin.x,
-          pointerDownState.origin.y,
-          {
-            allHitElements,
-          },
-        );
+        const hitElementMightBeLocked =
+          resolvedAboveHit ??
+          this.getElementAtPosition(
+            pointerDownState.origin.x,
+            pointerDownState.origin.y,
+            {
+              allHitElements,
+            },
+          );
 
         if (
           !hitElementMightBeLocked ||
@@ -10341,6 +10401,7 @@ class App extends React.Component<AppProps, AppState> {
           // hitElement may already be set above, so check first
           pointerDownState.hit.element =
             pointerDownState.hit.element ??
+            resolvedAboveHit ??
             this.getElementAtPosition(
               pointerDownState.origin.x,
               pointerDownState.origin.y,
@@ -12093,7 +12154,7 @@ class App extends React.Component<AppProps, AppState> {
         );
       }
       const target = event.target;
-      if (!(target instanceof HTMLElement)) {
+      if (!(target instanceof Element)) {
         return;
       }
 
@@ -13119,7 +13180,17 @@ class App extends React.Component<AppProps, AppState> {
   private onPointerUpFromPointerDownHandler(
     pointerDownState: PointerDownState,
   ): (event: PointerEvent) => void {
+    const originPointerId = this.lastPointerDownEvent?.pointerId;
+    const originPointerType = this.lastPointerDownEvent?.pointerType;
     return withBatchedUpdates((childEvent: PointerEvent) => {
+      if (
+        originPointerType === "pen" &&
+        originPointerId !== undefined &&
+        childEvent.type === "pointerup" &&
+        childEvent.pointerId !== originPointerId
+      ) {
+        return;
+      }
       const elementsMap = this.scene.getNonDeletedElementsMap();
 
       this.removePointer(childEvent);
@@ -13394,12 +13465,6 @@ class App extends React.Component<AppProps, AppState> {
           transformAnchor = null;
           transformInitialPoints = null;
           transformEntryPos = null;
-          this.actionManager.executeAction(actionFinalize);
-          return;
-        }
-
-        if (wasStraightened) {
-          wasStraightened = false;
           this.actionManager.executeAction(actionFinalize);
           return;
         }
@@ -15529,7 +15594,9 @@ class App extends React.Component<AppProps, AppState> {
           event.target instanceof HTMLTextAreaElement ||
           event.target instanceof HTMLIFrameElement ||
           (event.target instanceof HTMLElement &&
-            event.target.classList.contains(CLASSES.FRAME_NAME))
+            event.target.classList.contains(CLASSES.FRAME_NAME)) ||
+          (event.target instanceof SVGElement &&
+            Boolean(event.target.closest(".excalidraw__above-embeddables-hit")))
         )
       ) {
         // prevent zooming the browser (but allow scrolling DOM)

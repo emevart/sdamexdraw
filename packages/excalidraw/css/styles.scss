@@ -178,6 +178,15 @@ body.excalidraw-cursor-resize * {
     }
   }
 
+  &__above-embeddables-hit {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
   .FixedSideContainer {
     padding-top: var(--sat, 0);
     padding-right: var(--sar, 0);

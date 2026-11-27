@@ -11,6 +11,14 @@ The change should be grouped under one of the below section and must contain PR 
 Please add the latest change on the top under the correct section.
 -->
 
+## 0.30.16 (2026-11-27)
+
+### Fixes
+
+- Миникарта (`Minimap`, `MinimapToggle`): `memo` и точечные подписки `useAppStateValue`/`useOnAppStateChange`/`app.scene.onUpdate` вместо подписки на весь `AppState`; кэширование отрисованных элементов на offscreen canvas при pan/zoom; безопасная отписка при размонтировании `Scene`. Тест: `tests/minimap.test.tsx`.
+- Palm rejection (`emevart/billion-dollars#5706`): ранний выход при касании с активным стилусом перенесён в начало `handleCanvasPointerDown` (до `setPointerCapture`, закрытия меню и уборки); защита от сброса штриха другого указателя в `onPointerUpFromPointerDownHandler`; удалён мёртвый `wasStraightened`. Тесты: `tests/tabletInputPolicy.test.tsx`.
+- Выделение и перетаскивание элементов поверх живых вставок `embeddable` (`emevart/billion-dollars#6126`): SVG hit-слой в режиме выделения с приоритетом выбранного элемента над вставками без регрессии для инструмента «Лазер» и обычной активации вставок. Тесты: `tests/aboveEmbeddablesHit.test.tsx`, `tests/laser.test.tsx`.
+
 ## 0.30.15 (2026-10-21)
 
 ### Fixes

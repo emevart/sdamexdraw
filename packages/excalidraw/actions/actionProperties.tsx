@@ -586,6 +586,7 @@ export const actionChangeStrokeWidth = register<
           min={isHighlighter ? 8 : 0.5}
           max={isHighlighter ? 40 : 8}
           step={isHighlighter ? 2 : 0.5}
+          presets={isHighlighter ? [8, 16, 24, 36] : [0.5, 1, 2, 4, 8]}
         />
       </fieldset>
     );

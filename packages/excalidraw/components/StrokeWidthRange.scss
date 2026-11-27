@@ -54,4 +54,35 @@
     font-size: 12px;
     color: var(--text-primary-color);
   }
+
+  .stroke-width-range__presets {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .stroke-width-range__preset {
+    flex: 1;
+    min-width: 0;
+    height: 24px;
+    padding: 0 4px;
+    border: 1px solid var(--default-border-color);
+    border-radius: 6px;
+    background: var(--button-bg);
+    color: var(--text-primary-color);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--button-hover-bg);
+    }
+
+    &--active {
+      border-color: var(--color-primary);
+      background: var(--color-primary-light);
+      color: var(--color-primary);
+    }
+  }
 }
